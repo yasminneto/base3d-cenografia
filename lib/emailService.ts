@@ -319,8 +319,12 @@ Equipe FREELA HUB | V3A Live Marketing
     const host = process.env.FREELAHUB_SMTP_HOST || 'smtp.gmail.com';
     const port = parseInt(process.env.FREELAHUB_SMTP_PORT || '465', 10);
     const secure = process.env.FREELAHUB_SMTP_SECURE !== 'false';
-    const user = process.env.FREELAHUB_SMTP_USER || 'freelahub@v3a.ag';
-    const pass = process.env.FREELAHUB_SMTP_PASS || 'V3a#a1b2c2026114';
+    const user = process.env.FREELAHUB_SMTP_USER;
+    const pass = process.env.FREELAHUB_SMTP_PASS;
+
+    if (!user || !pass) {
+      throw new Error('FREELAHUB_SMTP_USER/FREELAHUB_SMTP_PASS não configurados no ambiente do servidor.');
+    }
 
     console.log(`[EmailService] Sending proposal email via SMTP (${host}:${port}) to ${params.recipientEmail}`);
 
@@ -391,8 +395,12 @@ export async function sendProposalResponseNotificationEmail(params: SendProposal
     const host = process.env.FREELAHUB_SMTP_HOST || 'smtp.gmail.com';
     const port = parseInt(process.env.FREELAHUB_SMTP_PORT || '465', 10);
     const secure = process.env.FREELAHUB_SMTP_SECURE !== 'false';
-    const user = process.env.FREELAHUB_SMTP_USER || 'freelahub@v3a.ag';
-    const pass = process.env.FREELAHUB_SMTP_PASS || 'V3a#a1b2c2026114';
+    const user = process.env.FREELAHUB_SMTP_USER;
+    const pass = process.env.FREELAHUB_SMTP_PASS;
+
+    if (!user || !pass) {
+      throw new Error('FREELAHUB_SMTP_USER/FREELAHUB_SMTP_PASS não configurados no ambiente do servidor.');
+    }
 
     const transporter = nodemailer.createTransport({
       host,
