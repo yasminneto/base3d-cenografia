@@ -539,23 +539,23 @@ export interface Suggestion {
 
 // Initial structured data conforming to rules
 export const initialUsers: User[] = [
-  { id: 'usr-1', name: 'RENATO GIOIA', email: 'renato@v3a.ag', profile: 'MASTER', status: 'Ativo', password: 'V3A@123', firstAccessPending: false, role: 'Diretor Master' },
-  { id: 'usr-2', name: 'Karen Maximo', email: 'karen@v3a.ag', profile: 'RH', status: 'Ativo', password: 'V3A@123', firstAccessPending: true, role: 'Gerente Operacional de RH' },
-  { id: 'usr-3', name: 'Ana Lima', email: 'ana@v3a.ag', profile: 'NÚCLEO', nucleoId: 'nuc-2', status: 'Ativo', password: 'V3A@123', firstAccessPending: true, role: 'Head de Marketing' },
-  { id: 'usr-4', name: 'Lucas Borges', email: 'lucas@v3a.ag', profile: 'NÚCLEO', nucleoId: 'nuc-3', status: 'Ativo', password: 'V3A@123', firstAccessPending: true, role: 'Head de Design & Criação' },
-  { id: 'usr-5', name: 'Rodrigo Master', email: 'master@v3a.com.br', profile: 'MASTER', status: 'Ativo', password: 'V3A@123', firstAccessPending: false, role: 'Diretor Geral Executivo' },
-  { id: 'usr-6', name: 'Fernanda RH Lara', email: 'fernanda.rh@v3a.com.br', profile: 'RH', status: 'Ativo', password: 'V3A@123', firstAccessPending: false, role: 'Gerente Geral do RH' },
-  { id: 'usr-7', name: 'Juliana RH Souza', email: 'juliana.rh@v3a.com.br', profile: 'RH', status: 'Ativo', password: 'V3A@123', firstAccessPending: false, role: 'Analista de Onboarding' },
-  { id: 'usr-8', name: 'Tiago Silva (Head Tech)', email: 'tiago.tech@v3a.com.br', profile: 'NÚCLEO', nucleoId: 'nuc-1', status: 'Ativo', password: 'V3A@123', firstAccessPending: false, role: 'Líder de Tecnologia' }
+  { id: 'usr-1', name: 'Diretor Master (Demo)', email: 'master.demo@v3a.com', profile: 'MASTER', status: 'Ativo', password: 'DemoUser123!', firstAccessPending: false, role: 'Diretor Master' },
+  { id: 'usr-2', name: 'Gerente de RH (Demo)', email: 'rh.demo@v3a.com', profile: 'RH', status: 'Ativo', password: 'DemoUser123!', firstAccessPending: true, role: 'Gerente Operacional de RH' },
+  { id: 'usr-3', name: 'Head de Marketing (Demo)', email: 'marketing.demo@v3a.com', profile: 'NÚCLEO', nucleoId: 'nuc-2', status: 'Ativo', password: 'DemoUser123!', firstAccessPending: true, role: 'Head de Marketing' },
+  { id: 'usr-4', name: 'Head de Design (Demo)', email: 'design.demo@v3a.com', profile: 'NÚCLEO', nucleoId: 'nuc-3', status: 'Ativo', password: 'DemoUser123!', firstAccessPending: true, role: 'Head de Design & Criação' },
+  { id: 'usr-5', name: 'Diretor Executivo (Demo)', email: 'diretoria.demo@v3a.com', profile: 'MASTER', status: 'Ativo', password: 'DemoUser123!', firstAccessPending: false, role: 'Diretor Geral Executivo' },
+  { id: 'usr-6', name: 'Gerente Geral de RH (Demo)', email: 'rh.geral.demo@v3a.com', profile: 'RH', status: 'Ativo', password: 'DemoUser123!', firstAccessPending: false, role: 'Gerente Geral do RH' },
+  { id: 'usr-7', name: 'Analista de Onboarding (Demo)', email: 'onboarding.demo@v3a.com', profile: 'RH', status: 'Ativo', password: 'DemoUser123!', firstAccessPending: false, role: 'Analista de Onboarding' },
+  { id: 'usr-8', name: 'Head de Tecnologia (Demo)', email: 'tech.demo@v3a.com', profile: 'NÚCLEO', nucleoId: 'nuc-1', status: 'Ativo', password: 'DemoUser123!', firstAccessPending: false, role: 'Líder de Tecnologia' }
 ];
 
 export const initialNucleos: Nucleo[] = [
-  { id: 'nuc-1', name: 'Tecnologia', headName: 'Tiago Silva', headEmail: 'tiago.tech@v3a.com.br', status: 'Ativo', jobCount: 4, freelaUsedCount: 3 },
-  { id: 'nuc-2', name: 'Marketing', headName: 'Ana Lima', headEmail: 'ana.mkt@v3a.com.br', status: 'Ativo', jobCount: 3, freelaUsedCount: 4 },
-  { id: 'nuc-3', name: 'Design & Criação', headName: 'Lucas Borges', headEmail: 'lucas.design@v3a.com.br', status: 'Ativo', jobCount: 5, freelaUsedCount: 5 },
-  { id: 'nuc-4', name: 'Planejamento & Estratégia', headName: 'Mariana Duarte', headEmail: 'mariana.plan@v3a.com.br', status: 'Ativo', jobCount: 2, freelaUsedCount: 2 },
-  { id: 'nuc-5', name: 'Produção Executiva', headName: 'Ricardo Lemos', headEmail: 'ricardo.prod@v3a.com.br', status: 'Ativo', jobCount: 3, freelaUsedCount: 3 },
-  { id: 'nuc-6', name: 'Operações de Campo', headName: 'Carla Dias', headEmail: 'carla.ops@v3a.com.br', status: 'Ativo', jobCount: 1, freelaUsedCount: 1 },
+  { id: 'nuc-1', name: 'Tecnologia', headName: 'Head de Tecnologia (Demo)', headEmail: 'tech.demo@v3a.com', status: 'Ativo', jobCount: 4, freelaUsedCount: 3 },
+  { id: 'nuc-2', name: 'Marketing', headName: 'Head de Marketing (Demo)', headEmail: 'marketing.demo@v3a.com', status: 'Ativo', jobCount: 3, freelaUsedCount: 4 },
+  { id: 'nuc-3', name: 'Design & Criação', headName: 'Head de Design (Demo)', headEmail: 'design.demo@v3a.com', status: 'Ativo', jobCount: 5, freelaUsedCount: 5 },
+  { id: 'nuc-4', name: 'Planejamento & Estratégia', headName: 'Head de Planejamento (Demo)', headEmail: 'planejamento.demo@v3a.com', status: 'Ativo', jobCount: 2, freelaUsedCount: 2 },
+  { id: 'nuc-5', name: 'Produção Executiva', headName: 'Head de Produção (Demo)', headEmail: 'producao.demo@v3a.com', status: 'Ativo', jobCount: 3, freelaUsedCount: 3 },
+  { id: 'nuc-6', name: 'Operações de Campo', headName: 'Head de Operações (Demo)', headEmail: 'operacoes.demo@v3a.com', status: 'Ativo', jobCount: 1, freelaUsedCount: 1 },
 ];
 
 export const initialValuePolicies: ValuePolicy[] = [
