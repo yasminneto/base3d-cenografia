@@ -1,6 +1,15 @@
 'use server';
 
+import crypto from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabase';
+
+/**
+ * Generates a random temporary password (used whenever no explicit password is supplied).
+ * Never hardcode a fixed default here — it becomes a shared credential across every account.
+ */
+function generateTempPassword(): string {
+  return crypto.randomBytes(9).toString('base64url') + 'Aa1!';
+}
 
 /**
  * Creates a new user in Supabase Auth and inserts their profile into the public.profiles table.
@@ -103,7 +112,7 @@ export async function createUserAction(
     // 2. Create the user in auth.users
     const { data: authUser, error: createErr } = await adminClient.auth.admin.createUser({
       email: emailLower,
-      password: userData.password || 'V3A@123',
+      password: userData.password || generateTempPassword(),
       email_confirm: true,
     });
 
@@ -191,7 +200,7 @@ export async function resetUserPasswordAction(
     }
 
     // 2. Update password in auth
-    const passwordToSet = newPassword || 'V3A@123';
+    const passwordToSet = newPassword || generateTempPassword();
     const { error: resetErr } = await adminClient.auth.admin.updateUserById(targetUserId, {
       password: passwordToSet,
     });
@@ -270,12 +279,12 @@ export async function seedInitialDataAction() {
 
     // 1. Seed Nucleos
     const nucleosToSeed = [
-      { name: 'Tecnologia', code: 'NUC-TEC', head_name: 'Tiago Silva', head_email: 'tiago.tech@v3a.com.br' },
-      { name: 'Marketing', code: 'NUC-MKT', head_name: 'Ana Lima', head_email: 'ana.mkt@v3a.com.br' },
-      { name: 'Design & Criação', code: 'NUC-DES', head_name: 'Lucas Borges', head_email: 'lucas.design@v3a.com.br' },
-      { name: 'Planejamento & Estratégia', code: 'NUC-PLA', head_name: 'Mariana Duarte', head_email: 'mariana.plan@v3a.com.br' },
-      { name: 'Produção Executiva', code: 'NUC-PRO', head_name: 'Ricardo Lemos', head_email: 'ricardo.prod@v3a.com.br' },
-      { name: 'Operações de Campo', code: 'NUC-OPE', head_name: 'Carla Dias', head_email: 'carla.ops@v3a.com.br' },
+      { name: 'Tecnologia', code: 'NUC-TEC', head_name: 'Head de Tecnologia (Seed)', head_email: 'tech.seed@example.com' },
+      { name: 'Marketing', code: 'NUC-MKT', head_name: 'Head de Marketing (Seed)', head_email: 'marketing.seed@example.com' },
+      { name: 'Design & Criação', code: 'NUC-DES', head_name: 'Head de Design & Criação (Seed)', head_email: 'design.seed@example.com' },
+      { name: 'Planejamento & Estratégia', code: 'NUC-PLA', head_name: 'Head de Planejamento (Seed)', head_email: 'planejamento.seed@example.com' },
+      { name: 'Produção Executiva', code: 'NUC-PRO', head_name: 'Head de Produção (Seed)', head_email: 'producao.seed@example.com' },
+      { name: 'Operações de Campo', code: 'NUC-OPE', head_name: 'Head de Operações (Seed)', head_email: 'operacoes.seed@example.com' },
     ];
 
     const nucleoIds: Record<string, string> = {};
@@ -303,29 +312,30 @@ export async function seedInitialDataAction() {
     }
 
     // 2. Seed Users
+    // Each account gets its own randomly generated temp password — never a fixed/shared one.
     const usersToSeed = [
       {
-        email: 'renato@v3a.ag',
-        password: 'V3A@123',
-        full_name: 'RENATO GIOIA',
+        email: 'master.seed@example.com',
+        password: generateTempPassword(),
+        full_name: 'Diretor Master (Seed)',
         role: 'master' as const,
-        first_login_required: false,
+        first_login_required: true,
         is_seed_master: true,
         job_title: 'Diretor Master',
       },
       {
-        email: 'karen@v3a.ag',
-        password: 'V3A@123',
-        full_name: 'Karen Maximo',
+        email: 'rh.seed@example.com',
+        password: generateTempPassword(),
+        full_name: 'Gerente de RH (Seed)',
         role: 'rh' as const,
         first_login_required: true,
         is_seed_master: false,
         job_title: 'Gerente Operacional de RH',
       },
       {
-        email: 'alexandre@v3a.ag',
-        password: 'V3A@123',
-        full_name: 'Alexandre Moreira',
+        email: 'nucleo.design.seed@example.com',
+        password: generateTempPassword(),
+        full_name: 'Head de Design & Criação (Seed)',
         role: 'nucleo' as const,
         nucleo_name: 'Design & Criação',
         first_login_required: true,
@@ -353,6 +363,8 @@ export async function seedInitialDataAction() {
           console.error(`Error creating auth user ${u.email}:`, authErr);
           continue;
         }
+
+        console.log(`[Seed] Created ${u.email} with temp password: ${u.password} — troque no primeiro acesso.`);
 
         let nucleoId: string | null = null;
         if (u.role === 'nucleo' && u.nucleo_name) {
@@ -2019,5 +2031,6 @@ export async function reopenAllocationAction(
     return { success: false, error: err.message || 'Erro interno.' };
   }
 }
+
 
 
