@@ -1,0 +1,22 @@
+{
+  "codigo": "26-V3A-001",
+  "nome": "Botafogo",
+  "nivel": "intermediario",
+  "finalidade": "evento_via_publica",
+  "kml": "Poligono_original_usuario.kml",
+  "inclui_pista": true,
+  "fonte": "rio_ipp",
+  "lapidacoes": [
+    "lapidacao_R03.geojson"
+  ],
+  "pontos_de_vista": [
+    {
+      "nome": "Chegada_motos_ILUSTRATIVO",
+      "lat": -22.9476,
+      "lon": -43.1808,
+      "altura_olho_m": 1.6
+    }
+  ],
+  "saida": "saida",
+  "observacoes": "Evento de motos na orla. KML e lapidação vêm do pacote Botafogo_R03_completo.zip (pasta fontes/ e cartografia.gpkg). O ponto de vista é ilustrativo: ajustar lat/lon para o local real da chegada."
+}

@@ -1,0 +1,56 @@
+{
+  "rio_ipp": {
+    "rotulo": "Rio de Janeiro — IPP / Prefeitura (Data.Rio)",
+    "epsg": 31983,
+    "atribuicao": "IPP / Prefeitura da Cidade do Rio de Janeiro (cartografia 1:2.000 executada pela Topocart)",
+    "camadas": {
+      "edificacoes": {
+        "servicos": ["https://services5.arcgis.com/mgrvZxGU0bSJbVld/arcgis/rest/services/Quadras_Lotes_Edificacoes/FeatureServer"],
+        "nome": "edifica",
+        "campos": {"base": ["BASE", "base", "COTA_BASE", "cota_base"], "altura": ["ALTURA", "altura", "ALT", "alt"]},
+        "rotulo": "Edificações IPP (restituição 2013)"
+      },
+      "quadras": {
+        "servicos": ["https://services5.arcgis.com/mgrvZxGU0bSJbVld/arcgis/rest/services/Quadras_Lotes_Edificacoes/FeatureServer"],
+        "nome": "quadra",
+        "rotulo": "Quadras IPP 2013 (limite = meio-fio)"
+      },
+      "lotes": {
+        "servicos": ["https://services5.arcgis.com/mgrvZxGU0bSJbVld/arcgis/rest/services/Quadras_Lotes_Edificacoes/FeatureServer"],
+        "nome": "lote",
+        "rotulo": "Lotes IPP 2013 (limite = alinhamento)"
+      },
+      "logradouros": {
+        "servicos": [
+          "https://pgeo3.rio.rj.gov.br/arcgis/rest/services/Basicos/mapa_basico_UTM/MapServer",
+          "https://pgeo3.rio.rj.gov.br/arcgis/rest/services/Cartografia/Logradouros/MapServer"
+        ],
+        "nome": "logradouro|eixo",
+        "campos": {"nome": ["completo", "COMPLETO", "nome", "NOME", "logradouro", "LOGRADOURO"]},
+        "rotulo": "Eixos de logradouros IPP"
+      },
+      "ciclovias": {
+        "servicos": ["https://pgeo3.rio.rj.gov.br/arcgis/rest/services/Basicos/mapa_basico_UTM/MapServer"],
+        "nome": "cicl",
+        "opcional": true,
+        "rotulo": "Ciclovias municipais"
+      },
+      "arvores": {
+        "servicos": [],
+        "nome": "arvor|arbor",
+        "opcional": true,
+        "campos": {"copa": ["DIAM_COPA", "copa", "diametro_copa"], "altura": ["ALTURA", "altura"]},
+        "rotulo": "Inventário arbóreo (se disponível)"
+      }
+    },
+    "terreno": {
+      "tipo": "identify",
+      "servico": "https://pgeo3.rio.rj.gov.br/arcgis/rest/services/Cartografia/Modelo_Digital_de_Terreno__Lidar_2019__escala_1_10_000_/MapServer",
+      "rotulo": "MDT LiDAR 2019 (reamostrado 5 m)"
+    },
+    "ortofoto": {
+      "servico": "https://pgeo3.rio.rj.gov.br/arcgis/rest/services/Imagens/Mosaico_2024/ImageServer",
+      "rotulo": "Ortofoto IPP 2024 (15 cm)"
+    }
+  }
+}
