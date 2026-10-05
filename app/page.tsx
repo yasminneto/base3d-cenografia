@@ -86,6 +86,7 @@ import SidebarBrand from '@/components/SidebarBrand';
 import PublicLinksPanel from '@/components/PublicLinksPanel';
 import PublicSubmissionsPanel from '@/components/PublicSubmissionsPanel';
 import BookingsPanel from '@/components/BookingsPanel';
+import Base3DPanel from '@/components/Base3DPanel';
 
 // Icons for navigation
 import { 
@@ -123,7 +124,8 @@ import {
   X as XIcon,
   ShieldAlert,
   ChevronDown,
-  Check
+  Check,
+  Box
 } from 'lucide-react';
 
 import { useTheme } from '@/components/ThemeProvider';
@@ -1662,6 +1664,7 @@ export default function Home() {
           { name: 'Política de Valores', icon: Scale },
           { name: 'Meus Bookings', icon: CalendarCheck },
           { name: 'Timeline de Alocações', icon: CalendarRange },
+          { name: 'Base 3D / Cenografia', icon: Box },
           { name: 'Relatórios & Exportar', icon: TrendingUp },
           { name: 'Configurações', icon: SlidersHorizontal }
         ];
@@ -1689,6 +1692,7 @@ export default function Home() {
           { name: 'Shortlist & Negociação', icon: Handshake },
           { name: 'Meus Bookings', icon: CalendarCheck },
           { name: 'Timeline de Alocações', icon: CalendarRange },
+          { name: 'Base 3D / Cenografia', icon: Box },
           { name: 'Relatórios', icon: TrendingUp },
           { name: 'Configurações', icon: SlidersHorizontal }
         ];
@@ -1703,6 +1707,7 @@ export default function Home() {
           { name: 'Shortlist & Negociação', icon: Handshake },
           { name: 'Meus Bookings / Alocações', icon: CalendarCheck },
           { name: 'Timeline de Alocações', icon: CalendarRange },
+          { name: 'Base 3D / Cenografia', icon: Box },
           { name: 'Relatórios & Exportar', icon: TrendingUp }
         ];
       case 'NÚCLEO':
@@ -1714,6 +1719,7 @@ export default function Home() {
           { name: 'Shortlist & Negociação', icon: Handshake },
           { name: 'Meus Bookings', icon: CalendarCheck },
           { name: 'Timeline de Alocações', icon: CalendarRange },
+          { name: 'Base 3D / Cenografia', icon: Box },
           { name: 'Avaliar Freela', icon: Award }
         ];
       default:
@@ -2392,6 +2398,10 @@ export default function Home() {
 
           {activeTab === 'Relatórios & Exportar' && (
             <RelatoriosPanel db={db} />
+          )}
+
+          {activeTab === 'Base 3D / Cenografia' && (
+            <Base3DPanel db={db} />
           )}
 
           </div>

@@ -91,6 +91,21 @@ pedido.json ─► área (recorte e origem calculados) ─► fontes (IPP ou loc
 | `exportar/cad.py` | `export_cad.py` (+ DXF 3D e conversor ODA) |
 | `verificacao.py`, `pipeline.py` | `package_revision.py` |
 
+## Interface no Freela Hub
+
+Menu **Base 3D / Cenografia** (perfis Master, C-Level, Operação e Núcleo), em `components/Base3DPanel.tsx`:
+
+1. **Novo pedido:** Job vinculado, nome do local, finalidade, KML do Google Earth (área e perímetro calculados
+   na hora) ou coordenadas + área, link do Earth, "inclui faixa de rolamento", pontos de vista, prazo. O nível
+   recomendado vem da finalidade; escolher um nível abaixo gera alerta.
+2. **Operação:** baixa `pedido.json` + KML, roda `python -m base3d gerar pedido.json` na máquina Windows,
+   sobe o ZIP e registra a rodada (R01, R02, R03) colando o `VERIFICACAO_Rnn.json`. As pendências e o
+   indicador de entrega completa/parcial aparecem no pedido.
+3. **Status:** solicitado → em processamento → base gerada → em lapidação → em revisão → entregue.
+
+Tabelas `base3d_pedidos` e `base3d_rodadas` na migração `supabase/migrations/20261005000000_base3d_pedidos.sql`.
+Sem a migração aplicada, o módulo funciona em modo local (navegador) e avisa na tela.
+
 ## Limitações conhecidas
 
 - Validado com dados sintéticos. A execução real contra os serviços do IPP e a gravação de SKP/DWG
