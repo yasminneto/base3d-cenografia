@@ -120,6 +120,7 @@ def test_pipeline_completo(tmp_path):
     saida = Path(res["saida"])
     rel = res["relatorio"]
     assert saida.name.endswith("_R03")
+    assert (saida / "extensao_sketchup" / "base3d_cenografia.rbz").exists()
     for sufixo in ["_modelo.obj", "_modelo.mtl", "_Rhino6.3dm", "_base_local.dxf", "_base_UTM.dxf",
                    "_modelo3D_local.dxf", "_planta.png", "_vista_3D.png", "_area_evento.png", "_cenas_planta.png",
                    "_geografia.geojson"]:
@@ -353,3 +354,68 @@ def test_cliente_supabase_monta_requisicoes(monkeypatch, tmp_path):
     assert (m2, u2, d2) == ("POST", "https://x.supabase.co/storage/v1/object/base3d/abc/R01/p.zip", b"PK")
     assert h2["Content-type"] == "application/zip"
     assert (m3, u3) == ("PATCH", "https://x.supabase.co/rest/v1/base3d_pedidos?id=eq.abc")
+
+
+def test_extensao_sketchup_empacotada(tmp_path):
+    import shutil
+    import subprocess
+    import zipfile as zf
+    from base3d.pipeline import EXTENSAO, construir_extensao
+    rbz = construir_extensao(tmp_path / "x.rbz")
+    nomes = zf.ZipFile(rbz).namelist()
+    assert nomes == ["base3d_cenografia.rb", "base3d_cenografia/main.rb"]
+    if shutil.which("ruby"):  # sintaxe e lógica da extensão com a API do SketchUp simulada
+        for arq in nomes:
+            subprocess.run(["ruby", "-c", str(EXTENSAO / arq)], check=True, capture_output=True)
+        teste = Path(__file__).resolve().parent / "teste_extensao_sketchup.rb"
+        r = subprocess.run(["ruby", str(teste), str(EXTENSAO)], capture_output=True, text=True)
+        assert r.returncode == 0 and "ok" in r.stdout, r.stderr
+
+
+def test_fonte_osm_com_respostas_simuladas(tmp_path, monkeypatch):
+    """Prédios (altura e pavimentos), vias com largura por tipo, calçada estimada, água, árvore e poste."""
+    from pyproj import Transformer
+    from base3d.fontes import osm
+    tr = Transformer.from_crs(31983, 4326, always_xy=True)
+
+    def ll(x, y):
+        lon, lat = tr.transform(sintetico.E0 + x, sintetico.N0 + y)
+        return {"lon": lon, "lat": lat}
+
+    def anel(x0, y0, x1, y1):
+        return [ll(x0, y0), ll(x1, y0), ll(x1, y1), ll(x0, y1), ll(x0, y0)]
+
+    elementos = [
+        {"type": "way", "id": 1, "tags": {"building": "yes", "height": "21 m"}, "geometry": anel(200, 100, 230, 140)},
+        {"type": "way", "id": 2, "tags": {"building": "apartments", "building:levels": "4"}, "geometry": anel(150, 100, 175, 140)},
+        {"type": "way", "id": 3, "tags": {"highway": "residential", "name": "Rua OSM"}, "geometry": [ll(190, 0), ll(190, 340)]},
+        {"type": "way", "id": 4, "tags": {"highway": "footway"}, "geometry": [ll(240, 50), ll(240, 250)]},
+        {"type": "way", "id": 5, "tags": {"highway": "cycleway"}, "geometry": [ll(182, 60), ll(182, 200)]},
+        {"type": "way", "id": 6, "tags": {"natural": "water"}, "geometry": anel(245, 0, 300, 340)},
+        {"type": "node", "id": 7, "tags": {"natural": "tree"}, **ll(178, 150)},
+        {"type": "node", "id": 8, "tags": {"highway": "street_lamp", "height": "8"}, **ll(201, 160)},
+    ]
+
+    def falso_http(self, url, dados=None):
+        if "elevation" in url:
+            n = len(urllib_parse.parse_qs(urllib_parse.urlparse(url).query)["latitude"][0].split(","))
+            return {"elevation": [3.0] * n}
+        return {"elements": elementos}
+
+    import urllib.parse as urllib_parse
+    monkeypatch.setattr(osm.FonteOSM, "_http", falso_http)
+    caminho = sintetico.gerar(tmp_path, "intermediario", extras=dict(fonte="osm"))
+    res = executar(caminho, skp=False, dwg=False, verbose=False)
+    rel = res["relatorio"]
+    geo = json.loads(next(Path(res["saida"]).glob("*_geografia.geojson")).read_text())
+    predios = {f["properties"]["id_origem"]: f["properties"] for f in geo["features"]
+               if f["properties"]["category"] == "07_EDIFICACOES"}
+    assert predios["osmw1"]["height"] == 21 and predios["osmw1"]["metodo_altura"] == "source_attribute"
+    assert predios["osmw2"]["height"] == 12 and predios["osmw2"]["metodo_altura"] == "derived"
+    cats = {f["properties"]["category"]: f["properties"] for f in geo["features"]}
+    assert cats["04_CALCADAS_CAMINHOS"]["metodo"] == "estimated" and cats["06_AGUA"]["metodo"] == "visual_only"
+    assert rel["cobertura_ruas"]["ruas"]["Rua OSM"]["dentro_da_pista_pct"] == 100
+    assert rel["geografia"]["arvores"] == 1 and rel["geografia"]["postes"] == 1
+    assert rel["contrato"]["datum_vertical"].startswith("EGM2008")
+    assert any("Open-Meteo" in p for p in rel["pendencias"]) and any("ortofoto" in p for p in rel["pendencias"])
+    assert (Path(res["saida"]) / "fontes" / "osm.json").exists()

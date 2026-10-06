@@ -41,7 +41,9 @@ OBJ, 3DM, DXF, vistas e verificação rodam em qualquer sistema. **SKP** precisa
 python -m base3d validar exemplos\botafogo\pedido.json
 python -m base3d gerar   exemplos\botafogo\pedido.json            # --sem-skp / --sem-dwg / --sdk PASTA
 python -m base3d descobrir rio_ipp                                # lista as camadas dos serviços do IPP
-python -m pytest tests                                            # 15 testes com bairro sintético, sem rede
+python -m base3d extensao base3d_cenografia.rbz                   # instalador da extensão SketchUp
+python -m base3d.processador                                      # processador automático (Supabase)
+python -m pytest tests                                            # 20 testes com bairro sintético, sem rede
 ```
 
 ### Pedido (`pedido.json`)
@@ -57,7 +59,7 @@ python -m pytest tests                                            # 15 testes co
 | `pontos_de_vista` | `[{nome, lat, lon, altura_olho_m, alvo:{lat, lon}, fov}]` → cenas `PV_*` |
 | `lapidacoes` | lista de GeoJSON, um por rodada (R1, R2...) |
 | `materiais` | pasta com `materiais.json` = `{categoria: {textura, largura_m, altura_m}}` (detalhado) |
-| `fonte` | `rio_ipp` (serviços ArcGIS da Prefeitura) ou `local` com `fonte_local` (GeoJSONs próprios; `licenca` e `datum_vertical` opcionais) |
+| `fonte` | `rio_ipp` (cadastro da Prefeitura do Rio), `osm` (OpenStreetMap + Copernicus DEM, qualquer cidade) ou `local` com `fonte_local` (GeoJSONs próprios; `licenca` e `datum_vertical` opcionais) |
 
 ## Lapidação
 
@@ -108,20 +110,59 @@ Menu **Base 3D / Cenografia** (perfis Master, C-Level, Operação e Núcleo), em
 1. **Novo pedido:** Job vinculado, nome do local, finalidade, KML do Google Earth (área e perímetro calculados
    na hora) ou coordenadas + área, link do Earth, "inclui faixa de rolamento", pontos de vista, prazo. O nível
    recomendado vem da finalidade; escolher um nível abaixo gera alerta.
-2. **Operação:** baixa `pedido.json` + KML, roda `python -m base3d gerar pedido.json` na máquina Windows,
-   sobe o ZIP e registra a rodada (R01, R02, R03) colando o `VERIFICACAO_Rnn.json`. As pendências e o
-   indicador de entrega completa/parcial aparecem no pedido.
-3. **Status:** solicitado → em processamento → base gerada → em lapidação → em revisão → entregue.
+2. **Processamento automático:** o processador (abaixo) pega o pedido, gera o pacote, envia o ZIP ao Storage e
+   registra a rodada com pendências, distâncias e indicador de entrega completa/parcial.
+3. **Lapidação:** a operação baixa o pacote, desenha a rodada no QGIS e envia o GeoJSON pela própria tela; o
+   pedido vai para "Em lapidação" e o processador gera a R02 (e a R03 no detalhado).
+4. **Status:** solicitado → em processamento → base gerada → em lapidação → em revisão → entregue
+   (ou erro, com a mensagem na tela e opção de reprocessar). O registro manual continua disponível.
 
-Tabelas `base3d_pedidos` e `base3d_rodadas` na migração `supabase/migrations/20261005000000_base3d_pedidos.sql`.
-Sem a migração aplicada, o módulo funciona em modo local (navegador) e avisa na tela.
+Migrações: `supabase/migrations/20261005000000_base3d_pedidos.sql` e `20261006000000_base3d_automacao.sql`
+(campos de lapidação/erro/fonte, reserva atômica e bucket privado `base3d`). Sem elas, o módulo funciona em
+modo local (navegador) e avisa na tela.
+
+## Processador automático
+
+Roda na máquina Windows de produção e liga o Freela Hub ao motor:
+
+```powershell
+setx SUPABASE_URL "https://<projeto>.supabase.co"
+setx SUPABASE_SERVICE_ROLE_KEY "<chave de serviço>"     # só nesta máquina; nunca no front-end ou no repositório
+python -m base3d.processador                            # escuta a cada 60 s (--uma-vez para um pedido só)
+```
+
+Reserva o pedido com `base3d_reservar_pedido` (dois processadores nunca pegam o mesmo), monta `pedido.json`,
+KML e lapidações, roda o motor, envia o ZIP para `base3d/<pedido>/<Rnn>/` e registra a rodada. Falhas deixam o
+pedido em "erro" com a mensagem, sem travar a fila. Pode rodar como Tarefa Agendada do Windows.
+
+## Extensão SketchUp
+
+`extensao_sketchup/base3d_cenografia.rbz` vai em todo pacote (ou `python -m base3d extensao`). Depois de
+instalar (Extensões > Gerenciador de extensões > Instalar extensão), o menu **Extensões > Base 3D** oferece:
+
+- **Ficha do objeto selecionado:** fonte, confiança, método de cada atributo e `id_origem`;
+- **Sobre esta base:** origem local, CRS, datum vertical, versão do gerador;
+- **Destacar por método de obtenção:** pinta cada objeto pela confiança (azul medido, verde oficial, amarelo
+  calculado, vermelho estimado, cinza visual) — **Restaurar cores** ou Ctrl+Z voltam;
+- **Exportar vistas de todas as cenas:** PNG em 4K de cada cena, as vistas do nível detalhado;
+- **Nova cena aqui:** cria um ponto de vista `PV_nn` a partir da câmera atual.
+
+## Fonte OpenStreetMap (fora do Rio)
+
+`fonte: osm` usa Overpass (com servidores alternativos e cache) e o Copernicus DEM de 90 m via Open-Meteo.
+Prédios com `height` entram como atributo; com `building:levels`, altura derivada (3 m/pavimento). Pistas usam
+`width`, `lanes` × 3,5 m ou a largura típica do tipo de via; a calçada é uma faixa estimada; calçadões, ciclovias,
+água, praia, árvores e postes vêm do OSM quando mapeados. Precisão bem menor que a do cadastro do IPP: o
+intermediário e o detalhado dependem das lapidações. A API gratuita do Open-Meteo é para uso não comercial.
 
 ## Limitações conhecidas
 
 - Validado com dados sintéticos. A execução real contra os serviços do IPP e a gravação de SKP/DWG
   precisam ser testadas na máquina Windows (o ambiente de desenvolvimento não alcança `pgeo3.rio.rj.gov.br`).
-- O método pista/calçada depende do cadastro do Rio (quadra = meio-fio; lote = alinhamento). Em outras
-  cidades, conferir essa regra ou usar `fonte: local`.
+- O método pista/calçada depende do cadastro do Rio (quadra = meio-fio; lote = alinhamento). Fora do Rio,
+  `fonte: osm` estima larguras por tipo de via; para precisão, usar cadastro municipal via `fonte: local`.
+- A extensão SketchUp e o processador foram testados com a API do SketchUp e o Supabase simulados; a primeira
+  execução real deve ser acompanhada.
 - Costa, areia, ciclovia interpretada, pinturas, árvores e postes não vêm do cadastro: entram por lapidação
   (ou por inventário, quando a fonte tiver).
 - Renders fotorrealistas saem das cenas do .skp no motor de render (V-Ray, Enscape, D5); o motor gera as

@@ -67,11 +67,24 @@ def classificar(area, dados, perfil: dict, lapidacoes: list) -> Geografia:
         fonte_pista = f"{rot.get('quadras', 'Quadras')} + {rot.get('logradouros', 'eixos')} (terra − quadras, ≤35 m dos eixos)"
         conf_pista = "media"
     else:
-        pistas = union([s["g"].buffer(LARGURA_PISTA_SEM_CADASTRO_M / 2, cap_style=2) for s in eixos]).intersection(terra)
-        fonte_pista = f"{rot.get('logradouros', 'eixos')} com largura genérica de {LARGURA_PISTA_SEM_CADASTRO_M:.0f} m"
+        # Sem cadastro: largura por via (tag, faixas ou tipo) e calçada estimada ao lado da pista.
+        pistas = union([s["g"].buffer(s.get("largura_m", LARGURA_PISTA_SEM_CADASTRO_M) / 2, cap_style=2)
+                        for s in eixos]).intersection(terra)
+        fonte_pista = f"{rot.get('logradouros', 'eixos')} com largura por tipo de via (sem cadastro de meio-fio)"
         conf_pista = "baixa"
-        geo.pendencias.append("Sem cadastro de quadras: pistas com largura genérica; requer lapidação.")
+        faixa = union([s["g"].buffer(s.get("largura_m", LARGURA_PISTA_SEM_CADASTRO_M) / 2 + s.get("passeio_m", 2.0),
+                                     cap_style=2) for s in eixos if s.get("passeio_m", 2.0) > 0])
+        passeio = clean(faixa.difference(pistas).intersection(terra))
+        if not passeio.is_empty:
+            pecas["04_CALCADAS_CAMINHOS"].append(Peca(
+                passeio, "Faixa de passeio estimada ao lado da pista (sem cadastro)", "baixa", metodo="estimated"))
+        geo.pendencias.append("Sem cadastro de quadras: pistas e calçadas com largura estimada por tipo de via; "
+                              "o meio-fio precisa de lapidação sobre imagem ou vistoria.")
     pecas["03_PISTAS"].append(Peca(clean(pistas), fonte_pista, conf_pista))
+    if dados.caminhos:
+        cam = union([c["g"].buffer(c.get("largura_m", 2.0) / 2, cap_style=2) for c in dados.caminhos]).intersection(terra)
+        pecas["04_CALCADAS_CAMINHOS"].append(Peca(clean(cam), f"{rot.get('logradouros', 'Vias')}: calçadões e caminhos "
+                                                  "(eixo + largura)", "baixa", metodo="estimated"))
 
     urbanas = [q["g"] for q in dados.quadras
                if q["g"].area > 0 and q["g"].intersection(L).area > q["g"].area * OCUPACAO_LOTES_URBANA]
@@ -95,6 +108,13 @@ def classificar(area, dados, perfil: dict, lapidacoes: list) -> Geografia:
             if ocupado is not None:
                 p.g = clean(p.g.difference(ocupado))
             ocupado = p.g if ocupado is None else union([ocupado, p.g])
+
+    # Água e praia da fonte (quando houver) entram antes das lapidações, que podem corrigi-las.
+    for cat, polys, rotulo in [("02_PRAIA_AREIA", dados.praia, "Praia/areia da fonte"),
+                               ("06_AGUA", dados.agua, "Água da fonte")]:
+        g = union(polys).intersection(D) if polys else None
+        if g is not None and not g.is_empty:
+            _aplicar(pecas, cat, Peca(clean(g), rotulo, "media", metodo="source_attribute"))
 
     # ------------------------------------------------ rodadas de lapidação
     for item in sorted(lapidacoes, key=lambda i: i.rodada):
@@ -122,7 +142,8 @@ def classificar(area, dados, perfil: dict, lapidacoes: list) -> Geografia:
         if g.is_empty or not D.contains(g.representative_point()):
             continue
         base, altura, conf = e.get("base"), e.get("altura"), "media"
-        metodos = dict(geometria="source_attribute", base="source_attribute", altura="source_attribute")
+        metodos = dict(geometria="source_attribute", base="source_attribute",
+                       altura=e.get("metodo_altura") or "source_attribute")
         if altura is None or altura <= 0:
             altura, conf = ALTURA_PADRAO_M, "baixa"
             metodos["altura"] = "estimated"
@@ -289,6 +310,11 @@ def _instancias(dados, lapidacoes, D) -> list[dict]:
             out.append(dict(tipo="arvore", x=a["g"].x, y=a["g"].y, copa=a.get("copa") or 6.0,
                             altura=a.get("altura") or 8.0, fonte=dados.rotulos.get("arvores", "Inventário"),
                             confianca="media", status="base_automatica", metodo="source_attribute"))
+    for p in dados.postes:
+        if D.contains(p["g"]):
+            out.append(dict(tipo="poste", x=p["g"].x, y=p["g"].y, copa=None, altura=p.get("altura") or 6.0,
+                            fonte=dados.rotulos.get("postes", "Postes da fonte"), confianca="media",
+                            status="base_automatica", metodo="source_attribute"))
     for item in lapidacoes:
         if item.categoria not in ("08_ARVORES_COPAS", "10_POSTES"):
             continue

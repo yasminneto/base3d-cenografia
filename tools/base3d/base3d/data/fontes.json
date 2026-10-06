@@ -108,5 +108,50 @@
       "pendente": true,
       "nota": "Confirmar com o IPP a autorização para uso comercial e redistribuição, em especial da camada de edificações. Acesso público não equivale a licença livre."
     }
+  },
+  "osm": {
+    "rotulo": "OpenStreetMap + Copernicus DEM (qualquer cidade)",
+    "atribuicao": "© colaboradores do OpenStreetMap (ODbL); Copernicus DEM GLO-90 © DLR/Airbus, provido pelo programa Copernicus (UE/ESA), via Open-Meteo",
+    "overpass": [
+      "https://overpass-api.de/api/interpreter",
+      "https://overpass.kumi.systems/api/interpreter"
+    ],
+    "elevacao": {
+      "servico": "https://api.open-meteo.com/v1/elevation",
+      "lote": 100,
+      "rotulo": "Copernicus DEM GLO-90 (90 m) via Open-Meteo",
+      "data": "2021"
+    },
+    "datum_vertical": "EGM2008 (geoide do Copernicus DEM); resolução de 90 m — serve só para desníveis gerais",
+    "licenca": {
+      "resumo": "OSM sob ODbL (atribuição obrigatória); Copernicus DEM com atribuição",
+      "pendente": true,
+      "nota": "A API gratuita do Open-Meteo é para uso não comercial; para entrega comercial use plano pago ou um MDT local. Bases derivadas do OSM distribuídas como banco de dados seguem a ODbL."
+    },
+    "larguras_m": {
+      "motorway": 14,
+      "trunk": 14,
+      "primary": 12,
+      "secondary": 10,
+      "tertiary": 8,
+      "residential": 7,
+      "unclassified": 6,
+      "living_street": 5,
+      "service": 4,
+      "road": 7
+    },
+    "passeio_m": {
+      "motorway": 0,
+      "trunk": 2.5,
+      "primary": 3,
+      "secondary": 3,
+      "tertiary": 2.5,
+      "residential": 2,
+      "unclassified": 1.5,
+      "living_street": 0,
+      "service": 0,
+      "road": 2
+    },
+    "metros_por_pavimento": 3.0
   }
 }

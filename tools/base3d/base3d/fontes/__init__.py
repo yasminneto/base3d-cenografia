@@ -13,9 +13,13 @@ class DadosFonte:
     quadras: list[dict] = field(default_factory=list)      # {g, attr}
     lotes: list[dict] = field(default_factory=list)        # {g, attr}
     edificacoes: list[dict] = field(default_factory=list)  # {g, base, altura, id, attr}
-    logradouros: list[dict] = field(default_factory=list)  # {g: LineString, nome, id}
+    logradouros: list[dict] = field(default_factory=list)  # {g: LineString, nome, id, largura_m?, passeio_m?}
     ciclovias: list[dict] = field(default_factory=list)    # {g: LineString}
     arvores: list[dict] = field(default_factory=list)      # {g: Point, copa, altura}
+    postes: list[dict] = field(default_factory=list)       # {g: Point, altura}
+    caminhos: list[dict] = field(default_factory=list)     # {g: LineString, largura_m} (calçadões, trilhas)
+    agua: list = field(default_factory=list)               # polígonos de água
+    praia: list = field(default_factory=list)              # polígonos de areia/praia
     amostras_terreno: np.ndarray | None = None             # N x 3 (E, N, Z)
     ortofoto: Path | None = None
     rotulos: dict = field(default_factory=dict)            # camada -> descrição da fonte
@@ -66,6 +70,9 @@ def amostras_terreno_pontos(area, perto_m: float = 10, longe_m: float = 25):
 
 
 def carregar_fonte(pedido, area, pasta_cache: Path) -> DadosFonte:
+    if pedido.fonte == "osm":
+        from .osm import FonteOSM
+        return FonteOSM(area, pasta_cache).carregar()
     if pedido.fonte == "local":
         from .local import FonteLocal
         return FonteLocal(pedido.fonte_local, area).carregar()

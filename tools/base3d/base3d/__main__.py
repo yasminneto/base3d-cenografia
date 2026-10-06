@@ -4,6 +4,7 @@
     python -m base3d validar pedido.json
     python -m base3d recomendar --finalidade evento_via_publica --area 7680
     python -m base3d descobrir [rio_ipp]
+    python -m base3d extensao [destino.rbz]
 """
 from __future__ import annotations
 
@@ -25,6 +26,8 @@ def main(argv=None):
     r = sub.add_parser("recomendar", help="nível recomendado para a finalidade")
     r.add_argument("--finalidade")
     r.add_argument("--area", type=float)
+    ext = sub.add_parser("extensao", help="gera o instalador .rbz da extensão SketchUp")
+    ext.add_argument("destino", nargs="?", default="base3d_cenografia.rbz")
     dsc = sub.add_parser("descobrir", help="lista camadas dos serviços de uma fonte")
     dsc.add_argument("fonte", nargs="?", default="rio_ipp")
     a = ap.parse_args(argv)
@@ -45,6 +48,9 @@ def main(argv=None):
     elif a.cmd == "recomendar":
         from .config import recomendar_nivel
         print(json.dumps(recomendar_nivel(a.finalidade, a.area), indent=2, ensure_ascii=False))
+    elif a.cmd == "extensao":
+        from .pipeline import construir_extensao
+        print("Extensão gerada:", construir_extensao(a.destino))
     elif a.cmd == "descobrir":
         from .fontes.arcgis import descobrir
         print("\n".join(descobrir(a.fonte)))

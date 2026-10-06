@@ -83,6 +83,9 @@ def executar(caminho_pedido: str | Path, skp: bool = True, dwg: bool = True, sdk
     avisos += av
     if dados.licenca.get("pendente"):
         avisos.append(f"Licença das fontes a confirmar antes de entrega comercial: {dados.licenca.get('nota', '')}")
+    if not dados.ortofoto:
+        avisos.append("Sem ortofoto de referência nesta fonte: conferência e lapidação precisam de imagem licenciada "
+                      "(ortofoto municipal, voo próprio de drone ou imagem contratada).")
     if "não informado" in dados.datum_vertical or "confirmar" in dados.datum_vertical.lower():
         avisos.append(f"Datum vertical: {dados.datum_vertical}. Cotas servem para desníveis relativos, não absolutos.")
     contrato = dict(
@@ -187,6 +190,8 @@ def executar(caminho_pedido: str | Path, skp: bool = True, dwg: bool = True, sdk
         avisos.append("Renders fotorrealistas: abrir o .skp e renderizar as cenas PV_* e 03/07 no motor de render "
                       "(V-Ray, Enscape ou D5). As câmeras já estão posicionadas.")
 
+    rbz = construir_extensao(saida / "extensao_sketchup" / "base3d_cenografia.rbz")
+    formatos["extensao_sketchup"] = dict(arquivo=rbz.relative_to(saida).as_posix()) if rbz else dict(erro="fonte ausente")
     rel = montar_relatorio(pedido, area, geo, malha_rel, topologia, formatos, avisos, dados.log, contrato)
     (saida / f"{prefixo}_contrato.json").write_text(json.dumps(contrato, indent=2, ensure_ascii=False), encoding="utf8")
     (saida / f"VERIFICACAO_{rev}.json").write_text(json.dumps(rel, indent=2, ensure_ascii=False, default=str), encoding="utf8")
@@ -195,6 +200,22 @@ def executar(caminho_pedido: str | Path, skp: bool = True, dwg: bool = True, sdk
     zip_path = empacotar(saida, prefixo, rev)
     log(f"Pacote: {zip_path}")
     return dict(saida=str(saida), pacote=str(zip_path), relatorio=rel)
+
+
+EXTENSAO = Path(__file__).resolve().parents[1] / "sketchup"
+
+
+def construir_extensao(destino: Path) -> Path | None:
+    """Gera o instalador .rbz (zip) da extensão SketchUp a partir de tools/base3d/sketchup."""
+    if not (EXTENSAO / "base3d_cenografia.rb").exists():
+        return None
+    destino = Path(destino)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(destino, "w", zipfile.ZIP_DEFLATED) as z:
+        z.write(EXTENSAO / "base3d_cenografia.rb", "base3d_cenografia.rb")
+        for arq in sorted((EXTENSAO / "base3d_cenografia").rglob("*.rb")):
+            z.write(arq, arq.relative_to(EXTENSAO).as_posix())
+    return destino
 
 
 def empacotar(saida: Path, prefixo: str, rev: str) -> Path:
@@ -230,6 +251,8 @@ def leia_me(pedido, area, geo, dados, prefixo, rev, cenas, rel) -> str:
         "",
         "COMECE AQUI",
         f"SketchUp 2026: {prefixo}_SketchUp2026.skp (cenas prontas: " + ", ".join(c["nome"] for c in cenas) + ").",
+        "   Extensão: instale extensao_sketchup/base3d_cenografia.rbz (Extensões > Gerenciador de extensões >",
+        "   Instalar extensão). Menu Extensões > Base 3D: ficha do objeto, destaque por método, exportar vistas das cenas.",
         f"AutoCAD 2026: {prefixo}_base_local.dwg (perto da origem) ou {prefixo}_base_UTM.dwg (coordenadas completas).",
         f"   Se o DWG não estiver no pacote, abra os .dxf equivalentes. Modelo 3D para AutoCAD: {prefixo}_modelo3D_local.dxf.",
         f"Rhino: {prefixo}_Rhino6.3dm (extrusões nativas, blocos, vistas nomeadas) ou {prefixo}_modelo.obj + .mtl.",
