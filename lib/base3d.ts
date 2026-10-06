@@ -5,7 +5,16 @@ import niveisData from '@/tools/base3d/base3d/data/niveis.json';
 
 export type NivelBase3D = 'basico' | 'intermediario' | 'detalhado';
 export type StatusBase3D =
-  | 'solicitado' | 'em_processamento' | 'base_gerada' | 'em_lapidacao' | 'em_revisao' | 'entregue' | 'cancelado';
+  | 'solicitado' | 'em_processamento' | 'base_gerada' | 'em_lapidacao' | 'em_revisao' | 'entregue' | 'cancelado' | 'erro';
+export type FonteBase3D = 'rio_ipp' | 'osm';
+
+export interface LapidacaoEnviada {
+  revisao: string;
+  nome: string;
+  conteudo: string;          // GeoJSON da rodada, lido pelo processador
+  enviado_por: string | null;
+  enviado_em: string;
+}
 
 export interface PerfilNivel {
   rotulo: string;
@@ -54,6 +63,11 @@ export interface PedidoBase3D {
   prazo: string | null;
   observacoes: string | null;
   status: StatusBase3D;
+  fonte: FonteBase3D;
+  lapidacoes: LapidacaoEnviada[];
+  erro_processamento: string | null;
+  processador: string | null;
+  processado_em: string | null;
   nucleo_id: string | null;
   solicitante_id: string | null;
   created_at: string;
@@ -87,7 +101,33 @@ export const STATUS_LABEL: Record<StatusBase3D, string> = {
   em_revisao: 'Em revisão',
   entregue: 'Entregue',
   cancelado: 'Cancelado',
+  erro: 'Erro no processamento',
 };
+
+export const FONTE_LABEL: Record<FonteBase3D, string> = {
+  rio_ipp: 'Rio de Janeiro — cadastro do IPP (mais preciso)',
+  osm: 'Outras cidades — OpenStreetMap (menos preciso)',
+};
+
+/** Município do Rio (retângulo envolvente): usa o cadastro do IPP; fora dele, OpenStreetMap. */
+export function sugerirFonte(lat?: number | null, lon?: number | null): FonteBase3D {
+  if (lat == null || lon == null) return 'rio_ipp';
+  return lat > -23.09 && lat < -22.74 && lon > -43.80 && lon < -43.09 ? 'rio_ipp' : 'osm';
+}
+
+/** Confere um GeoJSON de lapidação antes do envio: precisa de feições com 'categoria'. */
+export function validarLapidacao(texto: string): { ok: boolean; feicoes: number; erro?: string } {
+  try {
+    const d = JSON.parse(texto);
+    const feats = Array.isArray(d?.features) ? d.features : [];
+    const comCategoria = feats.filter((f: { properties?: Record<string, unknown> }) =>
+      f?.properties && (f.properties.categoria || f.properties.category)).length;
+    if (!comCategoria) return { ok: false, feicoes: 0, erro: "Nenhuma feição com o campo 'categoria'." };
+    return { ok: true, feicoes: comCategoria };
+  } catch {
+    return { ok: false, feicoes: 0, erro: 'O arquivo não é um GeoJSON válido.' };
+  }
+}
 
 // Próximos passos permitidos a partir de cada status.
 export const PROXIMOS_STATUS: Record<StatusBase3D, StatusBase3D[]> = {
@@ -98,6 +138,7 @@ export const PROXIMOS_STATUS: Record<StatusBase3D, StatusBase3D[]> = {
   em_revisao: ['em_lapidacao', 'entregue'],
   entregue: [],
   cancelado: [],
+  erro: ['solicitado', 'cancelado'],
 };
 
 export const CENA_LABEL: Record<string, string> = {
@@ -192,7 +233,7 @@ export function pedidoParaMotor(p: PedidoBase3D, lapidacoes: string[] = []) {
     nivel: p.nivel,
     finalidade: p.finalidade,
     inclui_pista: p.inclui_pista,
-    fonte: 'rio_ipp',
+    fonte: p.fonte ?? 'rio_ipp',
     lapidacoes,
     pontos_de_vista: p.pontos_de_vista,
     saida: 'saida',

@@ -268,3 +268,88 @@ def test_atributos_skp_sem_sdk():
     assert nomes[0] == "SUEntityGetAttributeDictionary" and chamadas[0][1][1] == b"base3d"
     assert "SUTypedValueSetString" in nomes and "SUTypedValueSetDouble" in nomes
     assert nomes.count("SUAttributeDictionarySetValue") == 2 and nomes[-1] == "SUTypedValueRelease"
+
+
+class SupabaseFalso:
+    """Registra as chamadas do processador sem rede."""
+
+    def __init__(self):
+        self.pedidos, self.rodadas, self.arquivos = {}, [], {}
+
+    def atualizar_pedido(self, pid, campos):
+        self.pedidos.setdefault(pid, {}).update(campos)
+
+    def inserir_rodada(self, r):
+        self.rodadas.append(r)
+
+    def enviar_arquivo(self, caminho, arquivo, tipo="application/zip"):
+        self.arquivos[caminho] = Path(arquivo).stat().st_size
+        return f"storage://base3d/{caminho}"
+
+
+def _registro(tmp_path, lapidacoes=()):
+    caminho = sintetico.gerar(tmp_path, "intermediario")
+    kml = (tmp_path / "poligono.kml").read_text()
+    pedido = json.loads(caminho.read_text())
+    fonte_local = {k: str(tmp_path / v) for k, v in pedido["fonte_local"].items()}
+    reg = dict(id="11111111-2222-3333-4444-555555555555", job_code="26-TEST-002", nome_local="Bairro sintético",
+               finalidade="evento_via_publica", nivel="intermediario", origem_poligono="kml",
+               kml_nome="poligono.kml", kml_conteudo=kml, inclui_pista=True, pontos_de_vista=[],
+               lapidacoes=list(lapidacoes), observacoes=None, processador="teste")
+    return reg, fonte_local
+
+
+def test_processador_gera_r01_e_r02(tmp_path):
+    from base3d.processador import processar
+    sb = SupabaseFalso()
+    reg, fonte_local = _registro(tmp_path)
+    r = processar(sb, reg, tmp_path / "trab", skp=False, dwg=False, fonte_local=fonte_local, verbose=False)
+    assert r["ok"] and r["revisao"] == "R01" and sb.pedidos[reg["id"]]["status"] == "base_gerada"
+    assert sb.rodadas[0]["tipo"] == "geracao" and sb.rodadas[0]["pacote_url"].startswith("storage://base3d/")
+    assert sb.rodadas[0]["entrega_completa"] is False  # nível intermediário ainda sem lapidação
+    lap = json.loads((tmp_path / sintetico.lapidacao_exemplo(tmp_path)).read_text())
+    reg["lapidacoes"] = [dict(revisao="R02", nome="lap.geojson", conteudo=json.dumps(lap))]
+    r2 = processar(sb, reg, tmp_path / "trab", skp=False, dwg=False, fonte_local=fonte_local, verbose=False)
+    assert r2["ok"] and r2["revisao"] == "R02" and sb.pedidos[reg["id"]]["status"] == "em_revisao"
+    assert sb.rodadas[1]["tipo"] == "lapidacao" and len(sb.arquivos) == 2
+
+
+def test_processador_marca_erro_sem_travar(tmp_path):
+    from base3d.processador import processar
+    sb = SupabaseFalso()
+    reg, fonte_local = _registro(tmp_path)
+    reg["kml_conteudo"] = "<kml>sem polígono</kml>"
+    r = processar(sb, reg, tmp_path / "trab", skp=False, dwg=False, fonte_local=fonte_local, verbose=False)
+    assert not r["ok"] and sb.pedidos[reg["id"]]["status"] == "erro"
+    assert "polígono" in sb.pedidos[reg["id"]]["erro_processamento"] and not sb.rodadas
+
+
+def test_cliente_supabase_monta_requisicoes(monkeypatch, tmp_path):
+    import io
+    from base3d import processador
+    vistos = []
+
+    class Resp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def falso_urlopen(req, timeout=0):
+        vistos.append((req.get_method(), req.full_url, dict(req.header_items()), req.data))
+        return Resp(b'[{"id": "abc"}]' if "rpc" in req.full_url else b"")
+
+    monkeypatch.setattr(processador.urllib.request, "urlopen", falso_urlopen)
+    sb = processador.Supabase("https://x.supabase.co/", "chave")
+    assert sb.reservar("maq")["id"] == "abc"
+    arq = tmp_path / "p.zip"
+    arq.write_bytes(b"PK")
+    assert sb.enviar_arquivo("abc/R01/p.zip", arq) == "storage://base3d/abc/R01/p.zip"
+    sb.atualizar_pedido("abc", {"status": "erro"})
+    (m1, u1, h1, _), (m2, u2, h2, d2), (m3, u3, _, _) = vistos
+    assert (m1, u1) == ("POST", "https://x.supabase.co/rest/v1/rpc/base3d_reservar_pedido")
+    assert h1["Authorization"] == "Bearer chave" and h1["Apikey"] == "chave"
+    assert (m2, u2, d2) == ("POST", "https://x.supabase.co/storage/v1/object/base3d/abc/R01/p.zip", b"PK")
+    assert h2["Content-type"] == "application/zip"
+    assert (m3, u3) == ("PATCH", "https://x.supabase.co/rest/v1/base3d_pedidos?id=eq.abc")

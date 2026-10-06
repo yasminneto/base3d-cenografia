@@ -4,10 +4,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { DatabaseProps } from '@/app/page';
 import { supabase } from '@/lib/supabase';
 import {
-  AREA_ALERTA_M2, CENA_LABEL, FINALIDADES, NIVEIS, ORDEM_NIVEIS, PROXIMOS_STATUS, STATUS_LABEL,
-  NivelBase3D, PedidoBase3D, PontoDeVista, RodadaBase3D, StatusBase3D,
+  AREA_ALERTA_M2, CENA_LABEL, FINALIDADES, FONTE_LABEL, NIVEIS, ORDEM_NIVEIS, PROXIMOS_STATUS, STATUS_LABEL,
+  FonteBase3D, LapidacaoEnviada, NivelBase3D, PedidoBase3D, PontoDeVista, RodadaBase3D, StatusBase3D,
   baixarArquivo, centroDoLinkEarth, formatarNumero, lerPoligonoKml, medirPoligono, nivelAbaixo,
-  nomeArquivoKml, pedidoParaMotor, recomendarNivel,
+  nomeArquivoKml, pedidoParaMotor, recomendarNivel, sugerirFonte, validarLapidacao,
 } from '@/lib/base3d';
 import {
   AlertTriangle, Box, CheckCircle2, Download, FileUp, Layers, Loader2, MapPin, Plus, Trash2, X,
@@ -28,6 +28,7 @@ const STATUS_COR: Record<StatusBase3D, string> = {
   em_revisao: 'bg-orange-50 text-orange-700',
   entregue: 'bg-emerald-50 text-emerald-700',
   cancelado: 'bg-red-50 text-red-600',
+  erro: 'bg-red-100 text-red-700',
 };
 
 interface Armazenamento { pedidos: PedidoBase3D[]; rodadas: RodadaBase3D[] }
@@ -45,6 +46,21 @@ function gravarLocal(d: Armazenamento) {
   try { window.localStorage.setItem(CHAVE_LOCAL, JSON.stringify(d)); } catch { /* armazenamento indisponível */ }
 }
 
+// Pedidos gravados antes da migração de automação não têm estes campos.
+function normalizar(p: PedidoBase3D): PedidoBase3D {
+  return { ...p, fonte: p.fonte ?? 'rio_ipp', lapidacoes: p.lapidacoes ?? [], erro_processamento: p.erro_processamento ?? null,
+    processador: p.processador ?? null, processado_em: p.processado_em ?? null };
+}
+
+/** Pacotes enviados pelo processador ficam no bucket privado: o link é assinado na hora (1 h). */
+async function abrirPacote(url: string) {
+  if (!url.startsWith('storage://')) { window.open(url, '_blank', 'noopener'); return; }
+  const [, bucket, ...resto] = url.replace('storage://', '/').split('/');
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(resto.join('/'), 3600);
+  if (error || !data) { alert(`Não foi possível gerar o link do pacote: ${error?.message ?? 'erro desconhecido'}`); return; }
+  window.open(data.signedUrl, '_blank', 'noopener');
+}
+
 async function buscarDados(): Promise<Armazenamento & { local: boolean }> {
   try {
     const [p, r] = await Promise.all([
@@ -52,10 +68,11 @@ async function buscarDados(): Promise<Armazenamento & { local: boolean }> {
       supabase.from('base3d_rodadas').select('*').order('created_at', { ascending: true }),
     ]);
     if (p.error || r.error) throw p.error || r.error;
-    return { pedidos: (p.data ?? []) as PedidoBase3D[], rodadas: (r.data ?? []) as RodadaBase3D[], local: false };
+    return { pedidos: ((p.data ?? []) as PedidoBase3D[]).map(normalizar), rodadas: (r.data ?? []) as RodadaBase3D[], local: false };
   } catch {
     // Sem Supabase configurado ou migração ainda não aplicada: trabalha no navegador.
-    return { ...lerLocal(), local: true };
+    const d = lerLocal();
+    return { pedidos: d.pedidos.map(normalizar), rodadas: d.rodadas, local: true };
   }
 }
 
@@ -150,7 +167,8 @@ export default function Base3DPanel({ db }: { db: DatabaseProps }) {
         <div className="flex items-start gap-2 p-3 rounded-xl border border-amber-200 bg-amber-50 text-[11px] text-amber-800">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>
-            Tabelas do Supabase indisponíveis (aplique a migração <code>20261005000000_base3d_pedidos.sql</code>).
+            Tabelas do Supabase indisponíveis (aplique as migrações <code>20261005000000_base3d_pedidos.sql</code> e
+            <code>20261006000000_base3d_automacao.sql</code>).
             Os pedidos estão sendo guardados só neste navegador.
           </span>
         </div>
@@ -217,6 +235,7 @@ export default function Base3DPanel({ db }: { db: DatabaseProps }) {
             <DetalhePedido pedido={pedidoSel} rodadas={rodadas.filter(r => r.pedido_id === pedidoSel.id)} operador={operador}
               usuarioId={db.currentUser?.id} onFechar={() => setSelecionado(null)}
               onStatus={s => salvarPedido({ ...pedidoSel, status: s }, false)}
+              onLapidacao={lap => salvarPedido({ ...pedidoSel, lapidacoes: [...pedidoSel.lapidacoes, lap], status: 'em_lapidacao', erro_processamento: null }, false)}
               onRodada={salvarRodada} />
           )}
         </div>
@@ -278,6 +297,7 @@ function NovoPedido({ db, onSalvar, onCancelar }: {
   const [prazo, setPrazo] = useState('');
   const [obs, setObs] = useState('');
   const [nivel, setNivel] = useState<NivelBase3D | ''>('');
+  const [fonteEscolhida, setFonteEscolhida] = useState<FonteBase3D | ''>('');
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
 
@@ -290,6 +310,9 @@ function NovoPedido({ db, onSalvar, onCancelar }: {
   const rec = recomendarNivel(finalidade, area);
   const nivelFinal: NivelBase3D = nivel || rec.nivel;
   const job = db.jobs.find(j => j.id === jobId);
+  const fonteSugerida = sugerirFonte(origem === 'kml' ? medida?.centro.lat : Number(lat) || null,
+    origem === 'kml' ? medida?.centro.lon : Number(lon) || null);
+  const fonte: FonteBase3D = fonteEscolhida || fonteSugerida;
 
   const carregarKml = async (f: File | undefined) => {
     setErro('');
@@ -344,6 +367,11 @@ function NovoPedido({ db, onSalvar, onCancelar }: {
       prazo: prazo || null,
       observacoes: obs || null,
       status: 'solicitado',
+      fonte,
+      lapidacoes: [],
+      erro_processamento: null,
+      processador: null,
+      processado_em: null,
       nucleo_id: job?.nucleoId ?? db.currentUser?.nucleoId ?? null,
       solicitante_id: db.currentUser?.id ?? null,
       created_at: agora,
@@ -422,6 +450,14 @@ function NovoPedido({ db, onSalvar, onCancelar }: {
             <label className={labelCls}>Link do Google Earth (opcional)</label>
             <input value={link} onChange={e => usarLink(e.target.value)} className={inputCls} placeholder="https://earth.google.com/web/..." />
           </div>
+          <div className="mt-2">
+            <label className={labelCls}>Fonte dos dados geográficos</label>
+            <select value={fonte} onChange={e => setFonteEscolhida(e.target.value as FonteBase3D)} className={inputCls}>
+              {(Object.keys(FONTE_LABEL) as FonteBase3D[]).map(k => (
+                <option key={k} value={k}>{FONTE_LABEL[k]}{k === fonteSugerida ? ' — sugerida pela localização' : ''}</option>
+              ))}
+            </select>
+          </div>
           <label className="flex items-center gap-2 mt-2 text-xs">
             <input type="checkbox" checked={incluiPista} onChange={e => setIncluiPista(e.target.checked)} />
             A área inclui faixa de rolamento de propósito (ex.: evento de motos, corrida)
@@ -491,9 +527,10 @@ function NovoPedido({ db, onSalvar, onCancelar }: {
   );
 }
 
-function DetalhePedido({ pedido, rodadas, operador, usuarioId, onFechar, onStatus, onRodada }: {
+function DetalhePedido({ pedido, rodadas, operador, usuarioId, onFechar, onStatus, onRodada, onLapidacao }: {
   pedido: PedidoBase3D; rodadas: RodadaBase3D[]; operador: boolean; usuarioId?: string;
   onFechar: () => void; onStatus: (s: StatusBase3D) => Promise<unknown>; onRodada: (r: RodadaBase3D) => Promise<void>;
+  onLapidacao: (l: LapidacaoEnviada) => Promise<unknown>;
 }) {
   const perfil = NIVEIS[pedido.nivel];
   const proxRevisao = `R${String(rodadas.length + 1).padStart(2, '0')}`;
@@ -503,6 +540,27 @@ function DetalhePedido({ pedido, rodadas, operador, usuarioId, onFechar, onStatu
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const limiteRodadas = perfil.rodadas_lapidacao + 1;
+  const [lapErro, setLapErro] = useState('');
+  const proxLapidacao = `R${String(pedido.lapidacoes.length + 2).padStart(2, '0')}`;
+  const podeLapidar = operador && pedido.lapidacoes.length < perfil.rodadas_lapidacao &&
+    ['base_gerada', 'em_revisao'].includes(pedido.status);
+
+  const enviarLapidacao = async (f: File | undefined) => {
+    setLapErro('');
+    if (!f) return;
+    const texto = await f.text();
+    const v = validarLapidacao(texto);
+    if (!v.ok) return setLapErro(v.erro ?? 'Arquivo inválido.');
+    setOcupado(true);
+    try {
+      await onLapidacao({ revisao: proxLapidacao, nome: f.name, conteudo: texto, enviado_por: usuarioId ?? null,
+        enviado_em: new Date().toISOString() });
+    } catch (e) {
+      setLapErro((e as Error).message);
+    } finally {
+      setOcupado(false);
+    }
+  };
 
   const registrar = async () => {
     setErro('');
@@ -528,7 +586,7 @@ function DetalhePedido({ pedido, rodadas, operador, usuarioId, onFechar, onStatu
     }
   };
 
-  const lapidacoes = rodadas.slice(1).map(r => `lapidacao_${r.revisao}.geojson`);
+  const lapidacoes = pedido.lapidacoes.map(l => `lapidacao_${l.revisao}.geojson`);
   return (
     <div className="bg-white border border-border-subtle rounded-2xl p-4 shadow-xs space-y-4">
       <div className="flex items-start justify-between gap-3">
@@ -566,12 +624,25 @@ function DetalhePedido({ pedido, rodadas, operador, usuarioId, onFechar, onStatu
             <button onClick={() => baixarArquivo(nomeArquivoKml(pedido), pedido.kml_conteudo!, 'application/vnd.google-earth.kml+xml')}
               className="flex items-center gap-1.5 text-xs font-bold cursor-pointer"><Download className="w-3.5 h-3.5" /> {nomeArquivoKml(pedido)}</button>
           )}
-          <p className="text-text-muted">Rodar: <code>python -m base3d gerar pedido.json</code></p>
+          {pedido.lapidacoes.map(l => (
+            <button key={l.revisao} onClick={() => baixarArquivo(`lapidacao_${l.revisao}.geojson`, l.conteudo, 'application/geo+json')}
+              className="flex items-center gap-1.5 text-xs font-bold cursor-pointer"><Download className="w-3.5 h-3.5" /> lapidacao_{l.revisao}.geojson</button>
+          ))}
+          <p className="text-text-muted">Fonte: {FONTE_LABEL[pedido.fonte]}</p>
+          <p className="text-text-muted">O processador automático pega pedidos “Solicitado” e “Em lapidação”. Manual: <code>python -m base3d gerar pedido.json</code></p>
         </div>
       </div>
 
+      {pedido.status === 'erro' && pedido.erro_processamento && (
+        <div className="flex items-start gap-2 p-3 rounded-xl border border-red-200 bg-red-50 text-[11px] text-red-700">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span><b>O processamento falhou.</b> {pedido.erro_processamento} Corrija e use “→ Solicitado” para reprocessar.</span>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2 border-t border-border-subtle pt-3">
         <span className={`inline-flex px-2 py-0.5 rounded font-bold text-[10px] ${STATUS_COR[pedido.status]}`}>{STATUS_LABEL[pedido.status]}</span>
+        {pedido.processado_em && <span className="text-[10px] text-text-muted">processado em {new Date(pedido.processado_em).toLocaleString('pt-BR')}</span>}
         {operador && PROXIMOS_STATUS[pedido.status].map(s => (
           <button key={s} onClick={() => onStatus(s)}
             className="px-2.5 py-1 rounded-lg border border-border-subtle text-[11px] font-bold cursor-pointer hover:bg-slate-50">→ {STATUS_LABEL[s]}</button>
@@ -593,7 +664,11 @@ function DetalhePedido({ pedido, rodadas, operador, usuarioId, onFechar, onStatu
                   </span>
                 )}
               </div>
-              {r.pacote_url && <a href={r.pacote_url} target="_blank" rel="noreferrer" className="underline">Pacote da entrega</a>}
+              {r.pacote_url && (
+                <button onClick={() => abrirPacote(r.pacote_url!)} className="underline cursor-pointer inline-flex items-center gap-1">
+                  <Download className="w-3 h-3" /> Baixar pacote da entrega
+                </button>
+              )}
               {r.pendencias.length > 0 && (
                 <ul className="list-disc pl-4 mt-1 text-text-secondary">{r.pendencias.map(p => <li key={p}>{p}</li>)}</ul>
               )}
@@ -613,9 +688,25 @@ function DetalhePedido({ pedido, rodadas, operador, usuarioId, onFechar, onStatu
         </div>
       </div>
 
-      {operador && rodadas.length < limiteRodadas && pedido.status !== 'cancelado' && pedido.status !== 'entregue' && (
+      {podeLapidar && (
         <div className="border-t border-border-subtle pt-3 space-y-2">
-          <p className={labelCls}>Registrar rodada {proxRevisao}</p>
+          <p className={labelCls}>Enviar lapidação {proxLapidacao}</p>
+          <p className="text-[11px] text-text-secondary">
+            GeoJSON desenhado no QGIS sobre a geografia e a ortofoto do pacote, só com o que muda (campo <code>categoria</code>;
+            opcionais <code>acao</code>, <code>altura_m</code>, <code>copa_m</code>, <code>metodo</code>). Ao enviar, o pedido vai para
+            “Em lapidação” e o processador gera a {proxLapidacao}.
+          </p>
+          <label className="flex items-center gap-2 border border-dashed border-border-subtle rounded-xl p-3 cursor-pointer hover:bg-slate-50 w-fit">
+            <FileUp className="w-4 h-4" /><span className="text-xs">Selecionar .geojson</span>
+            <input type="file" accept=".geojson,.json" className="hidden" disabled={ocupado} onChange={e => enviarLapidacao(e.target.files?.[0])} />
+          </label>
+          {lapErro && <p className="text-[11px] text-red-600">{lapErro}</p>}
+        </div>
+      )}
+
+      {operador && rodadas.length < limiteRodadas && pedido.status !== 'cancelado' && pedido.status !== 'entregue' && (
+        <details className="border-t border-border-subtle pt-3 space-y-2">
+          <summary className={`${labelCls} cursor-pointer`}>Registrar rodada {proxRevisao} manualmente (sem o processador)</summary>
           <input className={inputCls} placeholder="Link do pacote ZIP (Drive, Storage...)" value={pacote} onChange={e => setPacote(e.target.value)} />
           <textarea className={`${inputCls} font-mono h-24`} placeholder={`Cole aqui o conteúdo de VERIFICACAO_${proxRevisao}.json`}
             value={verificacao} onChange={e => setVerificacao(e.target.value)} />
@@ -625,7 +716,7 @@ function DetalhePedido({ pedido, rodadas, operador, usuarioId, onFechar, onStatu
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-action-cyan text-black text-xs font-bold cursor-pointer disabled:opacity-60">
             {ocupado ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />} Registrar {proxRevisao}
           </button>
-        </div>
+        </details>
       )}
     </div>
   );
