@@ -22,6 +22,7 @@ LARGURA_PISTA_SEM_CADASTRO_M = 12.0
 LARGURA_CICLOVIA_M = 2.5
 OCUPACAO_LOTES_URBANA = 0.15
 ALTURA_PADRAO_M = 9.0
+SOBREPOSICAO_DUPLICADA = 0.8
 
 SUPERFICIES = [c for c, v in CATEGORIAS.items() if v["tipo"] == "superficie"
                and c not in ("13_MEIO_FIO", "16_PINTURA_PISO")]
@@ -33,6 +34,7 @@ class Peca:
     fonte: str
     confianca: str
     status: str = "base_automatica"
+    metodo: str = "derived"
 
 
 @dataclass
@@ -80,7 +82,7 @@ def classificar(area, dados, perfil: dict, lapidacoes: list) -> Geografia:
     pecas["11_CANTEIROS_AREAS_LIVRES"].append(Peca(
         clean(Q.difference(U).intersection(terra)), f"{rot.get('quadras', 'Quadras')} sem lotes", "media"))
     pecas["12_AREAS_INTERNAS_LOTES"].append(Peca(
-        clean(L.intersection(terra)), rot.get("lotes", "Lotes"), "media"))
+        clean(L.intersection(terra)), rot.get("lotes", "Lotes"), "media", metodo="source_attribute"))
 
     if dados.ciclovias:
         cic = union([c["g"].buffer(LARGURA_CICLOVIA_M / 2, cap_style=2) for c in dados.ciclovias]).intersection(terra)
@@ -101,12 +103,13 @@ def classificar(area, dados, perfil: dict, lapidacoes: list) -> Geografia:
             if item.acao == "remover":
                 for p in pecas[item.categoria]:
                     p.g = clean(p.g.difference(g))
-                _aplicar(pecas, "01_CONTEXTO", Peca(g, item.fonte, item.confianca, item.status))
+                _aplicar(pecas, "01_CONTEXTO", Peca(g, item.fonte, item.confianca, item.status, item.metodo))
             else:
-                _aplicar(pecas, item.categoria, Peca(g, item.fonte, item.confianca, item.status))
+                _aplicar(pecas, item.categoria, Peca(g, item.fonte, item.confianca, item.status, item.metodo))
         elif item.categoria == "16_PINTURA_PISO":
             for pg in parts(item.g.intersection(D)):
-                geo.pinturas.append(dict(g=pg, fonte=item.fonte, confianca=item.confianca, status=item.status))
+                geo.pinturas.append(dict(g=pg, fonte=item.fonte, confianca=item.confianca, status=item.status,
+                                         metodo=item.metodo))
         elif item.categoria == "13_MEIO_FIO":
             geo.meio_fio += [ln for ln in parts(item.g.intersection(D), "LineString")]
 
@@ -119,15 +122,23 @@ def classificar(area, dados, perfil: dict, lapidacoes: list) -> Geografia:
         if g.is_empty or not D.contains(g.representative_point()):
             continue
         base, altura, conf = e.get("base"), e.get("altura"), "media"
+        metodos = dict(geometria="source_attribute", base="source_attribute", altura="source_attribute")
         if altura is None or altura <= 0:
             altura, conf = ALTURA_PADRAO_M, "baixa"
+            metodos["altura"] = "estimated"
             invalidas += 1
         if base is None:
             base = float(elev([g.representative_point().coords[0]])[0])
+            metodos["base"] = "derived"  # cota do MDT no ponto interno
         for pg in parts(g):
             predios.append(dict(g=orient(pg, sign=1), base=float(base), altura=float(altura),
                                 fonte=rot.get("edificacoes", "Edificações"), confianca=conf,
-                                status="base_automatica", id=e.get("id")))
+                                status="base_automatica", id=e.get("id"), metodos=dict(metodos)))
+    predios, duplicadas = _remover_sobrepostas(predios)
+    if duplicadas:
+        geo.pendencias.append(
+            f"{duplicadas} projeção(ões) de edificação sobreposta(s) a outra (>{SOBREPOSICAO_DUPLICADA:.0%}) "
+            "removida(s) para não duplicar volume; conferir a identidade desses prédios antes de detalhar fachada.")
     for item in [i for i in lapidacoes if i.categoria == "07_EDIFICACOES"]:
         predios = _lapidar_edificacao(predios, item, elev)
     geo.edificacoes = predios
@@ -149,8 +160,9 @@ def classificar(area, dados, perfil: dict, lapidacoes: list) -> Geografia:
             for pg in parts(p.g):
                 if pg.area < 0.05:
                     continue
+                metodo = "visual_only" if cat == "06_AGUA" else p.metodo  # água em Z=0 é só referência
                 geo.superficies.append(dict(g=orient(pg, sign=1), categoria=cat, nome=f"{cat}_{n:03d}",
-                                            fonte=p.fonte, confianca=p.confianca, status=p.status))
+                                            fonte=p.fonte, confianca=p.confianca, status=p.status, metodo=metodo))
                 n += 1
     for i, p in enumerate(geo.pinturas):
         p.update(categoria="16_PINTURA_PISO", nome=f"16_PINTURA_PISO_{i:03d}")
@@ -189,6 +201,7 @@ def classificar(area, dados, perfil: dict, lapidacoes: list) -> Geografia:
         edificacoes_com_patio=sum(1 for p in geo.edificacoes if p["g"].interiors),
         registros_edificacoes_fonte=len(dados.edificacoes),
         alturas_padrao_aplicadas=invalidas,
+        projecoes_sobrepostas_removidas=duplicadas,
         superficies=len(geo.superficies),
         areas_m2={k: round(v, 1) for k, v in sorted(areas.items())},
         meio_fio_m=round(sum(l.length for l in geo.meio_fio), 1),
@@ -222,6 +235,10 @@ def _lapidar_edificacao(predios: list, item, elev) -> list:
             if "base_m" in item.props:
                 p["base"] = float(item.props["base_m"])
             p.update(fonte=item.fonte, confianca=item.confianca, status=item.status)
+            if "altura_m" in item.props:
+                p["metodos"]["altura"] = item.metodo
+            if "base_m" in item.props:
+                p["metodos"]["base"] = item.metodo
         return predios
     if item.acao in ("remover", "substituir"):
         predios = [p for p in predios if p not in alvo]
@@ -233,8 +250,36 @@ def _lapidar_edificacao(predios: list, item, elev) -> list:
             predios.append(dict(g=orient(pg, sign=1), base=float(base),
                                 altura=float(item.props.get("altura_m", ALTURA_PADRAO_M)),
                                 fonte=item.fonte, confianca=item.confianca, status=item.status,
-                                id=item.props.get("id", f"L{item.rodada}")))
+                                id=item.props.get("id", f"L{item.rodada}"),
+                                metodos=dict(geometria=item.metodo,
+                                             base=item.metodo if "base_m" in item.props else "derived",
+                                             altura=item.metodo if "altura_m" in item.props else "estimated")))
     return predios
+
+
+def _remover_sobrepostas(predios: list) -> tuple[list, int]:
+    """Projeções quase coincidentes (ex.: registros A101/A103/A104 do mesmo prédio) viram um volume só.
+
+    Mantém o mais alto, que costuma ser o corpo principal; os demais são contados e reportados.
+    """
+    from shapely.strtree import STRtree
+    if len(predios) < 2:
+        return predios, 0
+    ordem = sorted(range(len(predios)), key=lambda i: -(predios[i]["base"] + predios[i]["altura"]))
+    arvore = STRtree([p["g"] for p in predios])
+    removidos = set()
+    for i in ordem:
+        if i in removidos:
+            continue
+        gi = predios[i]["g"]
+        for j in arvore.query(gi):
+            if j == i or j in removidos:
+                continue
+            gj = predios[j]["g"]
+            menor = min(gi.area, gj.area)
+            if menor > 0 and gi.intersection(gj).area > SOBREPOSICAO_DUPLICADA * menor:
+                removidos.add(int(j))
+    return [p for k, p in enumerate(predios) if k not in removidos], len(removidos)
 
 
 def _instancias(dados, lapidacoes, D) -> list[dict]:
@@ -243,7 +288,7 @@ def _instancias(dados, lapidacoes, D) -> list[dict]:
         if D.contains(a["g"]):
             out.append(dict(tipo="arvore", x=a["g"].x, y=a["g"].y, copa=a.get("copa") or 6.0,
                             altura=a.get("altura") or 8.0, fonte=dados.rotulos.get("arvores", "Inventário"),
-                            confianca="media", status="base_automatica"))
+                            confianca="media", status="base_automatica", metodo="source_attribute"))
     for item in lapidacoes:
         if item.categoria not in ("08_ARVORES_COPAS", "10_POSTES"):
             continue
@@ -256,11 +301,13 @@ def _instancias(dados, lapidacoes, D) -> list[dict]:
             if tipo == "arvore":
                 out.append(dict(tipo=tipo, x=pt.x, y=pt.y, copa=float(item.props.get("copa_m", 6.0)),
                                 altura=float(item.props.get("altura_m", 8.0)), fonte=item.fonte,
-                                confianca=item.props.get("confianca", "estimada"), status=item.status))
+                                confianca=item.props.get("confianca", "estimada"), status=item.status,
+                                metodo=item.metodo))
             else:
                 out.append(dict(tipo=tipo, x=pt.x, y=pt.y, copa=None,
                                 altura=float(item.props.get("altura_m", 6.0)), fonte=item.fonte,
-                                confianca=item.props.get("confianca", "candidato"), status=item.status))
+                                confianca=item.props.get("confianca", "candidato"), status=item.status,
+                                metodo=item.metodo))
     arv = pst = 0
     for i in out:
         if i["tipo"] == "arvore":

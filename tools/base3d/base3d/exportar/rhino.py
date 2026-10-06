@@ -13,7 +13,7 @@ import rhino3dm as r
 
 
 def exportar_3dm(modelo: dict, destino: Path, cenas: list[dict], titulo: str,
-                 materiais: dict | None = None, versao: int = 6) -> dict:
+                 materiais: dict | None = None, versao: int = 6, contrato: dict | None = None) -> dict:
     materiais = materiais or {}
     rh = r.File3dm()
     rh.Settings.ModelUnitSystem = r.UnitSystem.Meters
@@ -70,8 +70,8 @@ def exportar_3dm(modelo: dict, destino: Path, cenas: list[dict], titulo: str,
     furos = 0
     for o in modelo["objects"]:
         a = atributos(o["name"], o["layer"], o["color"])
-        a.SetUserString("Fonte", str(o.get("source", "")))
-        a.SetUserString("Confianca", str(o.get("confidence", "")))
+        for chave, valor in (o.get("attributes") or dict(fonte=o.get("source", ""), confianca=o.get("confidence", ""))).items():
+            a.SetUserString(str(chave), str(valor))
         if o["kind"] == "building":
             pts = [r.Point3d(x, y, o["base"]) for x, y in o["profile"]]
             crv = r.PolylineCurve(pts + [pts[0]])
@@ -97,7 +97,10 @@ def exportar_3dm(modelo: dict, destino: Path, cenas: list[dict], titulo: str,
     for o in modelo["instances"]:
         t = r.Transform.Scale(r.Plane.WorldXY(), *o["scale"])
         t.M03, t.M13, t.M23 = o["position"]
-        rh.Objects.AddInstanceObject(r.InstanceReference(defs[o["definition"]], t), atributos(o["name"], o["layer"]))
+        a = atributos(o["name"], o["layer"])
+        for chave, valor in (o.get("attributes") or {}).items():
+            a.SetUserString(str(chave), str(valor))
+        rh.Objects.AddInstanceObject(r.InstanceReference(defs[o["definition"]], t), a)
     for o in modelo["curves"]:
         for i, anel in enumerate([o["outer"]] + o["holes"]):
             pts = [r.Point3d(x, y, 0) for x, y in anel]
@@ -124,7 +127,10 @@ def exportar_3dm(modelo: dict, destino: Path, cenas: list[dict], titulo: str,
         except Exception:  # vistas nomeadas são conveniência; não bloqueiam a entrega
             pass
     rh.ApplicationName = titulo
-    rh.ApplicationDetails = "Base pública + modelagem remota. Não é levantamento de campo."
+    # rhino3dm não grava texto de documento; o contrato vai nos detalhes do arquivo e no *_contrato.json.
+    resumo = "; ".join(f"{k}={v}" for k, v in (contrato or {}).items()
+                       if k in ("versao_gerador", "crs_horizontal", "datum_vertical", "origem_local_E", "origem_local_N"))
+    rh.ApplicationDetails = "Base pública + modelagem remota. Não é levantamento de campo. " + resumo
     if not rh.Write(str(destino), versao):
         raise AssertionError("Falha ao gravar 3DM")
     chk = r.File3dm.Read(str(destino))

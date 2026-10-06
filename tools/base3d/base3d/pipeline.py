@@ -18,10 +18,11 @@ import unicodedata
 import zipfile
 from pathlib import Path
 
+from . import __version__
 from .area import montar_area
 from .cenas import montar_cenas
 from .classificacao import classificar
-from .config import Pedido
+from .config import METODOS, Pedido
 from .exportar.comum import carregar_materiais
 from .fontes import carregar_fonte
 from .geo import feature, write_geojson
@@ -80,14 +81,29 @@ def executar(caminho_pedido: str | Path, skp: bool = True, dwg: bool = True, sdk
         f"{len(dados.logradouros)} eixos, {0 if dados.amostras_terreno is None else len(dados.amostras_terreno)} cotas")
     lapidacoes, av = carregar_lapidacoes(pedido.lapidacoes, area)
     avisos += av
+    if dados.licenca.get("pendente"):
+        avisos.append(f"Licença das fontes a confirmar antes de entrega comercial: {dados.licenca.get('nota', '')}")
+    if "não informado" in dados.datum_vertical or "confirmar" in dados.datum_vertical.lower():
+        avisos.append(f"Datum vertical: {dados.datum_vertical}. Cotas servem para desníveis relativos, não absolutos.")
+    contrato = dict(
+        gerador="base3d", versao_gerador=__version__, pedido=pedido.codigo, revisao=f"R{len(pedido.lapidacoes) + 1:02d}",
+        nivel=pedido.nivel, crs_horizontal=f"EPSG:{area.epsg}", datum_vertical=dados.datum_vertical, unidade="metro",
+        origem_local_E=float(area.origem[0]), origem_local_N=float(area.origem[1]), origem_local_Z=0.0,
+        eixo_vertical="Z", entorno_m=pedido.entorno, recorte=pedido.recorte,
+        fonte=pedido.fonte, atribuicao=dados.atribuicao, licenca=dados.licenca.get("resumo", ""),
+        datas_fontes="; ".join(f"{k}: {v}" for k, v in dados.datas.items() if v),
+        gerado_em=dt.datetime.now().isoformat(timespec="seconds"),
+    )
     geo = classificar(area, dados, perfil, lapidacoes)
     log(f"Classificação: {geo.estatisticas['superficies']} superfícies, {geo.estatisticas['edificacoes']} edificações, "
         f"{geo.estatisticas['arvores']} árvores, {geo.estatisticas['postes']} postes")
 
     feats = [feature(s["g"], category=s["categoria"], object_name=s["nome"], source=s["fonte"],
-                     confidence=s["confianca"], status=s["status"]) for s in geo.superficies + geo.pinturas]
+                     confidence=s["confianca"], status=s["status"], metodo=s.get("metodo", "derived"))
+             for s in geo.superficies + geo.pinturas]
     feats += [feature(p["g"], category="07_EDIFICACOES", object_name=p["nome"], source=p["fonte"],
-                      confidence=p["confianca"], status=p["status"], base=p["base"], height=p["altura"])
+                      confidence=p["confianca"], status=p["status"], base=p["base"], height=p["altura"],
+                      id_origem=str(p.get("id")), **{f"metodo_{k}": v for k, v in p.get("metodos", {}).items()})
               for p in geo.edificacoes]
     feats.append(feature(area.poligono, category="00_LIMITE_EVENTO", object_name="Limite_evento",
                          source="Polígono do pedido", confidence="exata", status="pedido"))
@@ -95,7 +111,7 @@ def executar(caminho_pedido: str | Path, skp: bool = True, dwg: bool = True, sdk
     from shapely.geometry import Point
     write_geojson([feature(Point(i["x"], i["y"]), category="08_ARVORES_COPAS" if i["tipo"] == "arvore" else "10_POSTES",
                            object_name=i["nome"], copa_m=i["copa"], altura_m=i["altura"], source=i["fonte"],
-                           confidence=i["confianca"]) for i in geo.instancias],
+                           confidence=i["confianca"], metodo=i.get("metodo", "estimated")) for i in geo.instancias],
                   saida / f"{prefixo}_arvores_postes.geojson", area.epsg)
 
     modelo, malha_rel = montar_modelo(area, geo, dados, perfil)
@@ -117,7 +133,8 @@ def executar(caminho_pedido: str | Path, skp: bool = True, dwg: bool = True, sdk
     _tentar(formatos, avisos, "obj", lambda: dict(exportar_obj(modelo, obj, materiais), releitura=reler_obj(obj)), "OBJ")
     log("OBJ/MTL gravados")
     from .exportar.rhino import exportar_3dm
-    _tentar(formatos, avisos, "rhino", lambda: exportar_3dm(modelo, saida / f"{prefixo}_Rhino6.3dm", cenas, titulo, materiais),
+    _tentar(formatos, avisos, "rhino", lambda: exportar_3dm(modelo, saida / f"{prefixo}_Rhino6.3dm", cenas, titulo, materiais,
+                                                                      contrato=contrato),
             "Rhino 3DM")
     log("3DM gravado")
 
@@ -140,7 +157,7 @@ def executar(caminho_pedido: str | Path, skp: bool = True, dwg: bool = True, sdk
     if skp:
         from .exportar.skp import exportar_skp
         _tentar(formatos, avisos, "skp", lambda: exportar_skp(modelo, saida / f"{prefixo}_SketchUp2026.skp", cenas, titulo,
-                                                              descricao, materiais, sdk_dir), "SKP")
+                                                              descricao, materiais, sdk_dir, contrato), "SKP")
     else:
         avisos.append("SKP não gerado (desativado nesta execução).")
     log("SKP processado")
@@ -170,7 +187,8 @@ def executar(caminho_pedido: str | Path, skp: bool = True, dwg: bool = True, sdk
         avisos.append("Renders fotorrealistas: abrir o .skp e renderizar as cenas PV_* e 03/07 no motor de render "
                       "(V-Ray, Enscape ou D5). As câmeras já estão posicionadas.")
 
-    rel = montar_relatorio(pedido, area, geo, malha_rel, topologia, formatos, avisos, dados.log)
+    rel = montar_relatorio(pedido, area, geo, malha_rel, topologia, formatos, avisos, dados.log, contrato)
+    (saida / f"{prefixo}_contrato.json").write_text(json.dumps(contrato, indent=2, ensure_ascii=False), encoding="utf8")
     (saida / f"VERIFICACAO_{rev}.json").write_text(json.dumps(rel, indent=2, ensure_ascii=False, default=str), encoding="utf8")
     (saida / f"PENDENCIAS_{rev}.md").write_text(lista_pendencias_md(rel), encoding="utf8")
     (saida / "LEIA-ME.txt").write_text(leia_me(pedido, area, geo, dados, prefixo, rev, cenas, rel), encoding="utf8")
@@ -236,11 +254,23 @@ def leia_me(pedido, area, geo, dados, prefixo, rev, cenas, rel) -> str:
         "ORGANIZAÇÃO (tags / layers)",
     ] + [f"   {k}" for k in sorted({s['categoria'] for s in geo.superficies} | {'00_LIMITE_EVENTO', '07_EDIFICACOES'})] + [
         "",
+        "COMO CADA DADO FOI OBTIDO (campo 'metodo' em cada objeto do SKP, 3DM e GeoJSON)",
+    ] + [f"   {k}: {v}" for k, v in METODOS.items()] + [
+        "No SketchUp: selecione o objeto > Janela > Informações da entidade, ou via Ruby:",
+        "   Sketchup.active_model.selection[0].attribute_dictionary('base3d').to_a",
+        "Nas edificações o método vem por atributo (metodo_geometria, metodo_base, metodo_altura).",
+        "",
+        "DISTÂNCIAS DO LIMITE DO EVENTO (cada uma diz de onde até onde)",
+    ] + [f"- até {d['ate']}: {br(d['distancia_m'])} m ({d['metodo_ate']}). {d['nota']}".rstrip()
+         for d in rel.get("distancias_evento", [])] + [
+        "",
         "PRECISÃO E LIMITAÇÕES",
         f"Precisão estimada do nível: {perfil['precisao_estimada']}.",
         "Pistas e calçadas derivam do cadastro (limite de quadra = meio-fio; limite de lote = alinhamento).",
         "Itens com origem 'interpretada' ou 'lapidado_R*' foram desenhados sobre ortofoto: conferir em vistoria.",
         "Não há fachadas, rampas pequenas, degraus, tampas ou pontos elétricos. Água em Z=0 é só referência.",
+        f"Datum vertical: {dados.datum_vertical}.",
+        "Resolução da malha não é exatidão: o terreno segue a resolução do MDT de origem.",
         "Esta entrega atende estudo de ocupação e volumetria. Não substitui levantamento para locação de estruturas.",
         "",
         "PENDÊNCIAS",
@@ -256,7 +286,9 @@ def leia_me(pedido, area, geo, dados, prefixo, rev, cenas, rel) -> str:
         "FONTES",
     ] + [f"- {k}: {v}" for k, v in dados.rotulos.items()] + [
         f"Atribuição obrigatória em apresentações derivadas: {dados.atribuicao}.",
-        "Não foram usadas texturas ou geometrias 3D extraídas do Google Earth (apenas o polígono).",
+        f"Licença: {dados.licenca.get('resumo', 'não informada')}." + (f" {dados.licenca.get('nota', '')}" if dados.licenca.get("pendente") else ""),
+        "Não foram usadas texturas, imagens ou geometrias 3D extraídas do Google Earth/Maps: só o polígono",
+        "desenhado pelo cliente. As políticas do Google proíbem derivar modelos 3D ou geodados das suas imagens e malhas.",
         "",
         "VERIFICAÇÕES",
         f"Ver VERIFICACAO_{rev}.json e PENDENCIAS_{rev}.md. Geometria e interoperabilidade verificadas; não acurácia de campo.",

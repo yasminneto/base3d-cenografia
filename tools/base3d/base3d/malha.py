@@ -26,6 +26,16 @@ from .geo import parts, union
 ERRO_AREA_MAX_M2 = 0.05
 
 
+def atributos(item: dict, **extra) -> dict:
+    """Metadados gravados em cada objeto (Attribute Dictionary no SKP, user strings no Rhino)."""
+    out = dict(categoria=item.get("categoria", ""), nome=item.get("nome", ""), fonte=item.get("fonte", ""),
+               confianca=item.get("confianca", ""), status=item.get("status", ""))
+    if item.get("metodo"):
+        out["metodo"] = item["metodo"]
+    out.update({k: ("" if v is None else v) for k, v in extra.items()})
+    return out
+
+
 def _aneis(g):
     return [list(g.exterior.coords)[:-1]] + [list(r.coords)[:-1] for r in g.interiors]
 
@@ -82,7 +92,10 @@ class Montador:
                     vertices=vs, faces=faces, holes=holes, export_faces=tampas + faces[2:],
                     profile=self.local(aneis[0]), inner_profiles=[self.local(r) for r in aneis[1:]],
                     base=base, height=p["altura"], source=p["fonte"], confidence=p["confianca"],
-                    status=p["status"], footprint_area=g.area)
+                    status=p["status"], footprint_area=g.area,
+                    attributes=atributos(p, id_origem=p.get("id"), base_m=round(base, 3),
+                                         altura_m=round(p["altura"], 3), area_projecao_m2=round(g.area, 3),
+                                         **{f"metodo_{k}": v for k, v in p.get("metodos", {}).items()}))
 
     def superficie(self, g, s, deslocamento=0.0, plana=False):
         g = orient(g, sign=1)
@@ -160,7 +173,8 @@ class Montador:
         self.erros_area.append(abs(a - g.area))
         return dict(name=s["nome"], layer=s["categoria"], color=cor(s["categoria"]), kind="surface",
                     vertices=xyz.tolist(), faces=faces, source=s.get("fonte", ""),
-                    confidence=s.get("confianca", ""), status=s.get("status", ""))
+                    confidence=s.get("confianca", ""), status=s.get("status", ""),
+                    attributes=atributos(s, area_m2=round(g.area, 3)))
 
     def meio_fio(self, linhas):
         """Faixa vertical entre a cota da calçada (MDT) e a pista rebaixada."""
@@ -184,7 +198,10 @@ class Montador:
             return None
         return dict(name="Meio_fio", layer="13_MEIO_FIO", color=cor("13_MEIO_FIO"), kind="curb",
                     vertices=vs, faces=faces, source="Borda pista × calçada/canteiro (derivado)",
-                    confidence="media", status="base_automatica")
+                    confidence="media", status="base_automatica",
+                    attributes=dict(categoria="13_MEIO_FIO", fonte="Borda pista × calçada/canteiro",
+                                    metodo="derived", metodo_altura="estimated", altura_m=self.h_meio_fio,
+                                    nota="Altura padrão do nível; não medida em campo."))
 
 
 # ---------------------------------------------------------------- componentes
@@ -289,11 +306,13 @@ def montar_modelo(area, geo, dados, perfil: dict) -> tuple[dict, dict]:
             r = i["copa"] / 2
             instancias.append(dict(name=i["nome"], definition="Arvore_esquematica", layer="08_ARVORES_COPAS",
                                    position=[i["x"] - m.OR[0], i["y"] - m.OR[1], z], scale=[r, r, i["altura"]],
-                                   source=i["fonte"], confidence=i["confianca"]))
+                                   source=i["fonte"], confidence=i["confianca"],
+                                   attributes=atributos(dict(i, categoria="08_ARVORES_COPAS"), copa_m=i["copa"], altura_m=i["altura"])))
         else:
             instancias.append(dict(name=i["nome"], definition="Poste_generico", layer="10_POSTES",
                                    position=[i["x"] - m.OR[0], i["y"] - m.OR[1], z], scale=[1, 1, i["altura"]],
-                                   source=i["fonte"], confidence=i["confianca"]))
+                                   source=i["fonte"], confidence=i["confianca"],
+                                   attributes=atributos(dict(i, categoria="10_POSTES"), altura_m=i["altura"])))
     modelo = dict(origin=[float(v) for v in m.OR], epsg=area.epsg, objects=objetos,
                   definitions=definicoes(), instances=instancias, planar=planos, curves=curvas)
     relatorio = dict(

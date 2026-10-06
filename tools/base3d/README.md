@@ -41,7 +41,7 @@ OBJ, 3DM, DXF, vistas e verificação rodam em qualquer sistema. **SKP** precisa
 python -m base3d validar exemplos\botafogo\pedido.json
 python -m base3d gerar   exemplos\botafogo\pedido.json            # --sem-skp / --sem-dwg / --sdk PASTA
 python -m base3d descobrir rio_ipp                                # lista as camadas dos serviços do IPP
-python -m pytest tests                                            # 12 testes com bairro sintético, sem rede
+python -m pytest tests                                            # 15 testes com bairro sintético, sem rede
 ```
 
 ### Pedido (`pedido.json`)
@@ -57,18 +57,28 @@ python -m pytest tests                                            # 12 testes co
 | `pontos_de_vista` | `[{nome, lat, lon, altura_olho_m, alvo:{lat, lon}, fov}]` → cenas `PV_*` |
 | `lapidacoes` | lista de GeoJSON, um por rodada (R1, R2...) |
 | `materiais` | pasta com `materiais.json` = `{categoria: {textura, largura_m, altura_m}}` (detalhado) |
-| `fonte` | `rio_ipp` (serviços ArcGIS da Prefeitura) ou `local` com `fonte_local` (GeoJSONs próprios) |
+| `fonte` | `rio_ipp` (serviços ArcGIS da Prefeitura) ou `local` com `fonte_local` (GeoJSONs próprios; `licenca` e `datum_vertical` opcionais) |
 
 ## Lapidação
 
 Cada rodada é um GeoJSON desenhado no QGIS sobre `*_geografia.geojson` + `*_ortofoto.jpg`, contendo
 **só o que muda**. Propriedade `categoria` (código, número ou apelido: `calcada`, `ciclovia`, `agua`,
 `praia`, `arvore`, `poste`...), `acao` (`adicionar`, `substituir`, `remover`, `ajustar_altura`) e
-`altura_m` / `copa_m` quando couber. A origem de cada pedaço fica registrada (`lapidado_R1`, `R2`).
+`altura_m` / `copa_m` quando couber, e `metodo` (`estimated` por padrão; `surveyed` para dado de levantamento).
+A origem de cada pedaço fica registrada (`lapidado_R1`, `R2`).
 
 Para reaproveitar Botafogo: `python -m base3d.r03 Botafogo_R03_cartografia.gpkg exemplos\botafogo\lapidacao_R03.geojson`
 (leva praia, areia úmida, água, ciclovia, pinturas, árvores e postes do R03) e copie
 `fontes\Poligono_original_usuario.kml` do pacote R03 para `exemplos\botafogo\`.
+
+## Procedência de cada dado
+
+Todo objeto leva `metodo` — `surveyed`, `source_attribute`, `derived`, `estimated` ou `visual_only` — e as
+edificações levam um método por atributo (`metodo_geometria`, `metodo_base`, `metodo_altura`) e `id_origem`.
+Isso fica no Attribute Dictionary `base3d` do `.skp` (Informações da entidade), nas user strings do `.3dm` e no
+GeoJSON. O relatório traz distâncias do limite do evento com os dois extremos declarados (projeção do prédio,
+meio-fio, eixo), o datum vertical e a situação de licença das fontes. Detalhes e origem dessas regras:
+`docs/aprendizados_projeto_paralelo.md`.
 
 ## Como funciona
 

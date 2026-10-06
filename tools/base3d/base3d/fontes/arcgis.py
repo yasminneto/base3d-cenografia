@@ -198,7 +198,11 @@ class FonteArcGIS:
     # ------------------------------------------------------------ montagem
     def carregar(self) -> DadosFonte:
         cam = self.cfg["camadas"]
-        d = DadosFonte(atribuicao=self.cfg.get("atribuicao", ""))
+        d = DadosFonte(atribuicao=self.cfg.get("atribuicao", ""),
+                       datum_vertical=self.cfg.get("datum_vertical", "não informado"),
+                       licenca=self.cfg.get("licenca", {}))
+        d.datas = {k: v.get("data", "") for k, v in cam.items()}
+        d.datas.update(terreno=self.cfg["terreno"].get("data", ""), ortofoto=self.cfg["ortofoto"].get("data", ""))
         d.rotulos = {k: v.get("rotulo", k) for k, v in cam.items()}
         d.rotulos["terreno"] = self.cfg["terreno"]["rotulo"]
         d.rotulos["ortofoto"] = self.cfg["ortofoto"]["rotulo"]

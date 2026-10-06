@@ -37,9 +37,13 @@ class FonteLocal:
         return out
 
     def carregar(self) -> DadosFonte:
-        d = DadosFonte(atribuicao=self.arquivos.get("atribuicao", "Arquivos locais"))
+        d = DadosFonte(atribuicao=self.arquivos.get("atribuicao", "Arquivos locais"),
+                       datum_vertical=self.arquivos.get("datum_vertical", "não informado"),
+                       licenca=dict(resumo=self.arquivos.get("licenca", "não informada"),
+                                    pendente="licenca" not in self.arquivos,
+                                    nota="Informe a licença dos arquivos em fonte_local.licenca."))
         d.rotulos = {k: f"Arquivo local ({Path(v).name})" for k, v in self.arquivos.items()
-                     if isinstance(v, (str, Path)) and k != "atribuicao"}
+                     if isinstance(v, (str, Path)) and k not in ("atribuicao", "datum_vertical", "licenca")}
         for g, p in self._feicoes("quadras"):
             d.quadras += [dict(g=pg, attr=p) for pg in parts(g)]
         for g, p in self._feicoes("lotes"):

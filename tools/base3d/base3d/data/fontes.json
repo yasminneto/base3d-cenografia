@@ -5,20 +5,42 @@
     "atribuicao": "IPP / Prefeitura da Cidade do Rio de Janeiro (cartografia 1:2.000 executada pela Topocart)",
     "camadas": {
       "edificacoes": {
-        "servicos": ["https://services5.arcgis.com/mgrvZxGU0bSJbVld/arcgis/rest/services/Quadras_Lotes_Edificacoes/FeatureServer"],
+        "servicos": [
+          "https://services5.arcgis.com/mgrvZxGU0bSJbVld/arcgis/rest/services/Quadras_Lotes_Edificacoes/FeatureServer"
+        ],
         "nome": "edifica",
-        "campos": {"base": ["BASE", "base", "COTA_BASE", "cota_base"], "altura": ["ALTURA", "altura", "ALT", "alt"]},
-        "rotulo": "Edificações IPP (restituição 2013)"
+        "campos": {
+          "base": [
+            "BASE",
+            "base",
+            "COTA_BASE",
+            "cota_base"
+          ],
+          "altura": [
+            "ALTURA",
+            "altura",
+            "ALT",
+            "alt"
+          ]
+        },
+        "rotulo": "Edificações IPP (restituição 2013)",
+        "data": "restituição 2013"
       },
       "quadras": {
-        "servicos": ["https://services5.arcgis.com/mgrvZxGU0bSJbVld/arcgis/rest/services/Quadras_Lotes_Edificacoes/FeatureServer"],
+        "servicos": [
+          "https://services5.arcgis.com/mgrvZxGU0bSJbVld/arcgis/rest/services/Quadras_Lotes_Edificacoes/FeatureServer"
+        ],
         "nome": "quadra",
-        "rotulo": "Quadras IPP 2013 (limite = meio-fio)"
+        "rotulo": "Quadras IPP 2013 (limite = meio-fio)",
+        "data": "2013"
       },
       "lotes": {
-        "servicos": ["https://services5.arcgis.com/mgrvZxGU0bSJbVld/arcgis/rest/services/Quadras_Lotes_Edificacoes/FeatureServer"],
+        "servicos": [
+          "https://services5.arcgis.com/mgrvZxGU0bSJbVld/arcgis/rest/services/Quadras_Lotes_Edificacoes/FeatureServer"
+        ],
         "nome": "lote",
-        "rotulo": "Lotes IPP 2013 (limite = alinhamento)"
+        "rotulo": "Lotes IPP 2013 (limite = alinhamento)",
+        "data": "2013"
       },
       "logradouros": {
         "servicos": [
@@ -26,31 +48,65 @@
           "https://pgeo3.rio.rj.gov.br/arcgis/rest/services/Cartografia/Logradouros/MapServer"
         ],
         "nome": "logradouro|eixo",
-        "campos": {"nome": ["completo", "COMPLETO", "nome", "NOME", "logradouro", "LOGRADOURO"]},
-        "rotulo": "Eixos de logradouros IPP"
+        "campos": {
+          "nome": [
+            "completo",
+            "COMPLETO",
+            "nome",
+            "NOME",
+            "logradouro",
+            "LOGRADOURO"
+          ]
+        },
+        "rotulo": "Eixos de logradouros IPP",
+        "data": "base contínua"
       },
       "ciclovias": {
-        "servicos": ["https://pgeo3.rio.rj.gov.br/arcgis/rest/services/Basicos/mapa_basico_UTM/MapServer"],
+        "servicos": [
+          "https://pgeo3.rio.rj.gov.br/arcgis/rest/services/Basicos/mapa_basico_UTM/MapServer"
+        ],
         "nome": "cicl",
         "opcional": true,
-        "rotulo": "Ciclovias municipais"
+        "rotulo": "Ciclovias municipais",
+        "data": "base contínua"
       },
       "arvores": {
         "servicos": [],
         "nome": "arvor|arbor",
         "opcional": true,
-        "campos": {"copa": ["DIAM_COPA", "copa", "diametro_copa"], "altura": ["ALTURA", "altura"]},
-        "rotulo": "Inventário arbóreo (se disponível)"
+        "campos": {
+          "copa": [
+            "DIAM_COPA",
+            "copa",
+            "diametro_copa"
+          ],
+          "altura": [
+            "ALTURA",
+            "altura"
+          ]
+        },
+        "rotulo": "Inventário arbóreo (se disponível)",
+        "data": "-"
       }
     },
     "terreno": {
       "tipo": "identify",
       "servico": "https://pgeo3.rio.rj.gov.br/arcgis/rest/services/Cartografia/Modelo_Digital_de_Terreno__Lidar_2019__escala_1_10_000_/MapServer",
-      "rotulo": "MDT LiDAR 2019 (reamostrado 5 m)"
+      "rotulo": "MDT LiDAR 2019 (reamostrado 5 m)",
+      "tipo_modelo": "MDT",
+      "nota": "MDT (solo). Não trocar por MDS: o MDS já inclui prédios e copas e dobraria as alturas.",
+      "data": "LiDAR 2019"
     },
     "ortofoto": {
       "servico": "https://pgeo3.rio.rj.gov.br/arcgis/rest/services/Imagens/Mosaico_2024/ImageServer",
-      "rotulo": "Ortofoto IPP 2024 (15 cm)"
+      "rotulo": "Ortofoto IPP 2024 (15 cm)",
+      "data": "2024"
+    },
+    "datum_vertical": "Não declarado nos serviços consultados; confirmar com o IPP antes de usar cotas absolutas",
+    "licenca": {
+      "resumo": "Dados públicos do IPP/Data.Rio com atribuição obrigatória",
+      "pendente": true,
+      "nota": "Confirmar com o IPP a autorização para uso comercial e redistribuição, em especial da camada de edificações. Acesso público não equivale a licença livre."
     }
   }
 }

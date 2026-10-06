@@ -9,6 +9,8 @@ ou exportado de um trabalho anterior. As propriedades aceitas:
     altura_m, base_m        edificações e postes
     copa_m, altura_m        árvores (pontos)
     fonte, confianca, nota  rastreabilidade (opcionais)
+    metodo      como o dado foi obtido: surveyed, source_attribute, derived, estimated (padrão)
+                ou visual_only
 
 Polígonos de superfície recortam as demais superfícies e entram na categoria
 indicada; a origem fica registrada como "lapidado_R<n>".
@@ -22,7 +24,7 @@ from pathlib import Path
 from shapely.geometry import shape
 from shapely.ops import transform
 
-from .config import CATEGORIAS
+from .config import CATEGORIAS, METODOS
 
 APELIDOS = {
     "limite": "00", "contexto": "01", "praia": "02", "areia": "02", "pista": "03", "rua": "03",
@@ -67,6 +69,12 @@ class ItemLapidacao:
     @property
     def confianca(self) -> str:
         return self.props.get("confianca", "alta")
+
+    @property
+    def metodo(self) -> str:
+        """Desenho sobre ortofoto é estimativa; use metodo="surveyed" para dado de levantamento."""
+        m = self.props.get("metodo", "estimated")
+        return m if m in METODOS else "estimated"
 
 
 def carregar_lapidacoes(arquivos: list[Path], area) -> tuple[list[ItemLapidacao], list[str]]:

@@ -71,11 +71,15 @@ def reler_obj(caminho: Path) -> dict:
     """Reimporta o OBJ e confere contagens e índices (substitui a conferência no Blender)."""
     nv = nvt = 0
     objetos = 0
+    mn = [float("inf")] * 3
+    mx = [float("-inf")] * 3
     tamanhos = collections.Counter()
     erros = 0
     for linha in Path(caminho).read_text(encoding="utf8").splitlines():
         if linha.startswith("v "):
             nv += 1
+            for k, c in enumerate(map(float, linha.split()[1:4])):
+                mn[k], mx[k] = min(mn[k], c), max(mx[k], c)
         elif linha.startswith("vt "):
             nvt += 1
         elif linha.startswith("o "):
@@ -85,5 +89,10 @@ def reler_obj(caminho: Path) -> dict:
             tamanhos[len(idx)] += 1
             if max(idx) > nv or min(idx) < 1 or len(set(idx)) != len(idx):
                 erros += 1
+    # Envelope: com Z para cima, a extensão vertical é muito menor que a horizontal.
+    # Se não for, o arquivo foi gravado com eixo trocado (o terreno "em pé" do caso Paulista).
+    ext = [b - a for a, b in zip(mn, mx)] if nv else [0, 0, 0]
     return dict(objects=objetos, vertices=nv, uv=nvt, face_sizes=dict(sorted(tamanhos.items())),
-                invalid_faces=erros)
+                invalid_faces=erros, envelope_min=[round(v, 3) for v in mn] if nv else None,
+                envelope_max=[round(v, 3) for v in mx] if nv else None,
+                z_para_cima_ok=bool(nv) and ext[2] < max(ext[0], ext[1]))

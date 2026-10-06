@@ -88,7 +88,14 @@ ASSINATURAS = {
     "SUEdgeGetSoft": [Ref, C.POINTER(C.c_bool)], "SUEntitiesGetNumGroups": [Ref, psize],
     "SUEntitiesGetGroups": [Ref, size, ptr, psize], "SUEntitiesGetBoundingBox": [Ref, C.POINTER(Caixa)],
 }
-RETORNA_REF = ["SUGroupToDrawingElement", "SUComponentInstanceToDrawingElement"]
+ASSINATURAS.update({
+    "SUEntityGetAttributeDictionary": [Ref, s, ptr], "SUModelGetAttributeDictionary": [Ref, s, ptr],
+    "SUAttributeDictionarySetValue": [Ref, s, Ref],
+    "SUTypedValueSetString": [Ref, s], "SUTypedValueSetDouble": [Ref, d],
+})
+RETORNA_REF = ["SUGroupToDrawingElement", "SUComponentInstanceToDrawingElement",
+               "SUGroupToEntity", "SUComponentInstanceToEntity"]
+DICIONARIO = b"base3d"  # nome do Attribute Dictionary (Janela > Informações da entidade / Ruby)
 
 
 class SDK:
@@ -119,8 +126,29 @@ class SDK:
         return ref
 
 
+def _gravar_atributos(su, dicionario: Ref, atributos: dict):
+    val = su.criar("SUTypedValueCreate")
+    try:
+        for chave, valor in atributos.items():
+            if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+                su("SUTypedValueSetString", val, str(valor).encode("utf8"))
+            else:
+                su("SUTypedValueSetDouble", val, float(valor))
+            su("SUAttributeDictionarySetValue", dicionario, str(chave).encode("utf8"), val)
+    finally:
+        su("SUTypedValueRelease", C.byref(val))
+
+
+def atributos_entidade(su, entidade: Ref, atributos: dict):
+    if not atributos:
+        return
+    dic = Ref()
+    su("SUEntityGetAttributeDictionary", entidade, DICIONARIO, C.byref(dic))
+    _gravar_atributos(su, dic, atributos)
+
+
 def exportar_skp(modelo: dict, destino: Path, cenas: list[dict], titulo: str, descricao: str,
-                 materiais: dict | None = None, sdk_dir: str | None = None) -> dict:
+                 materiais: dict | None = None, sdk_dir: str | None = None, contrato: dict | None = None) -> dict:
     su = SDK(sdk_dir)
     materiais = materiais or {}
     su("SUInitialize")
@@ -139,6 +167,10 @@ def exportar_skp(modelo: dict, destino: Path, cenas: list[dict], titulo: str, de
             su("SUOptionsProviderSetValue", prov, chave.encode(), val)
         su("SUTypedValueRelease", C.byref(val))
         tags, mats = {}, {}
+        if contrato:  # origem, CRS, datum vertical, versão do gerador: ficam dentro do .skp
+            dic = Ref()
+            su("SUModelGetAttributeDictionary", model, DICIONARIO, C.byref(dic))
+            _gravar_atributos(su, dic, contrato)
 
         def tag(nome, visivel=True):
             if nome not in tags:
@@ -166,7 +198,7 @@ def exportar_skp(modelo: dict, destino: Path, cenas: list[dict], titulo: str, de
                 mats[camada] = m
             return mats[camada]
 
-        def grupo(pai, nome, camada=None, cor=None):
+        def grupo(pai, nome, camada=None, cor=None, atributos=None):
             g = su.criar("SUGroupCreate")
             su("SUGroupSetName", g, nome.encode("utf8"))
             su("SUEntitiesAddGroup", pai, g)
@@ -175,12 +207,13 @@ def exportar_skp(modelo: dict, destino: Path, cenas: list[dict], titulo: str, de
                 su("SUDrawingElementSetLayer", el, tag(camada))
             if cor:
                 su("SUDrawingElementSetMaterial", el, material(camada, cor))
+            atributos_entidade(su, su.lib.SUGroupToEntity(g), atributos)
             ge = Ref()
             su("SUGroupGetEntities", g, C.byref(ge))
             return ge
 
         def preencher(pai, o, em_grupo=True):
-            ge = grupo(pai, o["name"], o.get("layer"), o.get("color")) if em_grupo else pai
+            ge = grupo(pai, o["name"], o.get("layer"), o.get("color"), o.get("attributes")) if em_grupo else pai
             geom = su.criar("SUGeometryInputCreate")
             vs = o["vertices"]
             arr = (P3 * len(vs))(*[P3(*(c * POL for c in v)) for v in vs])
@@ -236,6 +269,7 @@ def exportar_skp(modelo: dict, destino: Path, cenas: list[dict], titulo: str, de
             raiz = "03_Vegetacao" if o["definition"].startswith("Arvore") else "04_Postes"
             su("SUEntitiesAddInstance", raizes[raiz], ins, None)
             su("SUDrawingElementSetLayer", su.lib.SUComponentInstanceToDrawingElement(ins), tag(o["layer"]))
+            atributos_entidade(su, su.lib.SUComponentInstanceToEntity(ins), o.get("attributes"))
         for o in modelo["planar"]:
             preencher(raizes["90_Base_PLANA_edicao_Z0"], o)
         for o in modelo["curves"]:

@@ -127,6 +127,7 @@ def test_pipeline_completo(tmp_path):
     assert (saida / "LEIA-ME.txt").exists() and (saida / "VERIFICACAO_R03.json").exists()
     assert Path(res["pacote"]).exists()
     assert rel["formatos"]["obj"]["releitura"]["invalid_faces"] == 0
+    assert rel["formatos"]["obj"]["releitura"]["z_para_cima_ok"]
     assert rel["formatos"]["rhino"]["named_views"] >= 7
     for modo in ("local", "UTM"):
         doc = ezdxf.readfile(saida / rel["formatos"]["cad"][modo]["arquivo"])
@@ -213,3 +214,57 @@ def test_conversao_entrega_anterior(tmp_path):
     fc = json.loads((tmp_path / "lap.geojson").read_text())
     arvore = next(f for f in fc["features"] if f["properties"]["categoria"] == "arvore")
     assert arvore["geometry"]["type"] == "Point" and arvore["properties"]["copa_m"] == pytest.approx(4.51, abs=0.01)
+
+
+def test_procedencia_por_atributo_e_contrato(tmp_path):
+    """Cada objeto diz como foi obtido; o pacote traz contrato, distâncias e pendência de licença."""
+    lap = sintetico.lapidacao_exemplo(tmp_path)
+    res = executar(sintetico.gerar(tmp_path, "intermediario", [lap]), skp=False, dwg=False, verbose=False)
+    saida, rel = Path(res["saida"]), res["relatorio"]
+    geo = json.loads(next(saida.glob("*_geografia.geojson")).read_text())
+    predios = [f["properties"] for f in geo["features"] if f["properties"]["category"] == "07_EDIFICACOES"]
+    assert all(p["metodo_geometria"] == "source_attribute" and p["id_origem"] for p in predios)
+    assert any(p["metodo_altura"] == "estimated" for p in predios)  # ajuste de altura desenhado na lapidação
+    pistas = [f["properties"] for f in geo["features"] if f["properties"]["category"] == "03_PISTAS"]
+    assert all(p["metodo"] == "derived" for p in pistas)
+    assert rel["metodos_de_obtencao"]["arvores_postes"] == {"estimated": 27}
+    contrato = json.loads(next(saida.glob("*_contrato.json")).read_text())
+    assert contrato["crs_horizontal"] == "EPSG:31983" and contrato["origem_local_E"] == rel["area"]["origem"][0]
+    dists = {d["ate"].split(" ")[0]: d for d in rel["distancias_evento"]}
+    assert {"projeção", "meio-fio", "eixo"} <= set(dists)
+    assert all(len(d["ponto_de"]) == 2 and len(d["ponto_ate"]) == 2 for d in rel["distancias_evento"])
+    assert any("Licença das fontes" in p for p in rel["pendencias"])
+    assert any("Datum vertical" in p for p in rel["pendencias"])
+    m3 = rhino3dm.File3dm.Read(str(next(saida.glob("*_Rhino6.3dm"))))
+    textos = [dict(o.Attributes.GetUserStrings()) for o in m3.Objects]
+    assert any(t.get("metodo_altura") for t in textos)
+
+
+def test_projecoes_sobrepostas_viram_um_volume(tmp_path):
+    from shapely.geometry import box as caixa
+    from base3d.classificacao import _remover_sobrepostas
+    a = dict(g=caixa(0, 0, 10, 10), base=0.0, altura=20.0)
+    b = dict(g=caixa(0.5, 0, 10, 10), base=0.0, altura=12.0)  # mesmo prédio, registro duplicado
+    c = dict(g=caixa(20, 0, 30, 10), base=0.0, altura=9.0)
+    restantes, removidos = _remover_sobrepostas([b, a, c])
+    assert removidos == 1 and a in restantes and c in restantes and b not in restantes
+
+
+def test_atributos_skp_sem_sdk():
+    """Grava strings e números no Attribute Dictionary usando as chamadas certas do SDK."""
+    from base3d.exportar.skp import atributos_entidade, Ref
+    chamadas = []
+
+    class FakeSU:
+        def __call__(self, nome, *args):
+            chamadas.append((nome, args))
+
+        def criar(self, nome):
+            chamadas.append((nome, ()))
+            return Ref()
+
+    atributos_entidade(FakeSU(), Ref(), dict(fonte="IPP", altura_m=12.5))
+    nomes = [c[0] for c in chamadas]
+    assert nomes[0] == "SUEntityGetAttributeDictionary" and chamadas[0][1][1] == b"base3d"
+    assert "SUTypedValueSetString" in nomes and "SUTypedValueSetDouble" in nomes
+    assert nomes.count("SUAttributeDictionarySetValue") == 2 and nomes[-1] == "SUTypedValueRelease"

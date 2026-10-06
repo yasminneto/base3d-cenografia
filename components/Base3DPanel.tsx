@@ -14,6 +14,9 @@ import {
 } from 'lucide-react';
 
 const CHAVE_LOCAL = 'freelahub.base3d.v1';
+
+// Linha de distancias_evento do VERIFICACAO_Rnn.json: cada distância declara os dois extremos.
+interface DistanciaEvento { ate: string; distancia_m: number; metodo_ate: string; nota?: string }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PERFIS_OPERADORES = ['MASTER', 'C-LEVEL', 'OPERAÇÃO', 'OPERAÇÕES'];
 
@@ -593,6 +596,16 @@ function DetalhePedido({ pedido, rodadas, operador, usuarioId, onFechar, onStatu
               {r.pacote_url && <a href={r.pacote_url} target="_blank" rel="noreferrer" className="underline">Pacote da entrega</a>}
               {r.pendencias.length > 0 && (
                 <ul className="list-disc pl-4 mt-1 text-text-secondary">{r.pendencias.map(p => <li key={p}>{p}</li>)}</ul>
+              )}
+              {Array.isArray(r.verificacao?.distancias_evento) && (r.verificacao!.distancias_evento as DistanciaEvento[]).length > 0 && (
+                <div className="mt-1">
+                  <p className="font-bold text-text-primary">Distâncias do limite do evento</p>
+                  <ul className="list-disc pl-4 text-text-secondary">
+                    {(r.verificacao!.distancias_evento as DistanciaEvento[]).map(d => (
+                      <li key={d.ate}>até {d.ate}: <b>{formatarNumero(d.distancia_m)} m</b> <span className="text-text-muted">({d.metodo_ate})</span></li>
+                    ))}
+                  </ul>
+                </div>
               )}
               {r.observacoes && <p className="mt-1">{r.observacoes}</p>}
             </div>

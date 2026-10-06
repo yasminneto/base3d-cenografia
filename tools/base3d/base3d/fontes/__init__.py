@@ -20,6 +20,9 @@ class DadosFonte:
     ortofoto: Path | None = None
     rotulos: dict = field(default_factory=dict)            # camada -> descrição da fonte
     atribuicao: str = ""
+    datum_vertical: str = "não informado"
+    licenca: dict = field(default_factory=dict)  # {resumo, pendente, nota}
+    datas: dict = field(default_factory=dict)     # camada -> data/época do dado
     log: list[str] = field(default_factory=list)
 
     def elevacao(self):

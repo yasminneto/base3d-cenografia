@@ -13,7 +13,17 @@ DATA = Path(__file__).resolve().parent / "data"
 NIVEIS = json.loads((DATA / "niveis.json").read_text(encoding="utf8"))
 FONTES = json.loads((DATA / "fontes.json").read_text(encoding="utf8"))
 ORDEM_NIVEIS = ["basico", "intermediario", "detalhado"]
+TEXTO_FONTE_LOCAL = {"atribuicao", "datum_vertical", "licenca"}  # campos de fonte_local que não são arquivos
 CATEGORIAS = NIVEIS["categorias"]
+# Como cada atributo foi obtido, do mais ao menos confiável. Fica registrado por atributo,
+# para que uma nota global não esconda, por exemplo, uma altura estimada num prédio de cadastro.
+METODOS = {
+    "surveyed": "medido em levantamento próprio",
+    "source_attribute": "atributo da base oficial, como fornecido",
+    "derived": "calculado a partir de bases oficiais",
+    "estimated": "estimado ou desenhado sobre imagem",
+    "visual_only": "apenas representação visual, sem valor métrico",
+}
 
 
 def cor(categoria: str) -> list[int]:
@@ -136,7 +146,8 @@ class Pedido:
             lapidacoes=[rel(p) for p in d.get("lapidacoes", [])],
             materiais=rel(d.get("materiais")),
             fonte=d.get("fonte", "rio_ipp"),
-            fonte_local={k: rel(v) if isinstance(v, str) else v for k, v in d.get("fonte_local", {}).items()},
+            fonte_local={k: rel(v) if isinstance(v, str) and k not in TEXTO_FONTE_LOCAL else v
+                         for k, v in d.get("fonte_local", {}).items()},
             epsg=d.get("epsg"),
             saida=rel(d.get("saida", f"saida/{d['codigo']}")),
             observacoes=d.get("observacoes", ""),

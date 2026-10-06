@@ -62,6 +62,53 @@ def topologia_edificacoes(modelo: dict) -> dict:
                 volumes_nao_fechados=ruins, area_total_coberturas_m2=round(topo, 3))
 
 
+def distancias_evento(area, geo) -> list[dict]:
+    """Distâncias do limite do evento a objetos nomeados, cada uma com os dois extremos declarados.
+
+    "Distância até a rua" é ambígua: eixo, meio-fio e fachada são objetos diferentes e cada um
+    tem procedência própria. Por isso cada linha diz de onde até onde e como o extremo foi obtido.
+    """
+    from shapely.ops import nearest_points
+    pol = area.poligono
+    out = []
+
+    def linha(rotulo_ate, alvo, metodo_ate, nota=""):
+        a, b = nearest_points(pol, alvo)
+        out.append(dict(de="limite do evento (polígono do pedido)", ate=rotulo_ate,
+                        distancia_m=round(pol.distance(alvo), 2),
+                        ponto_de=[round(a.x, 3), round(a.y, 3)], ponto_ate=[round(b.x, 3), round(b.y, 3)],
+                        metodo_ate=metodo_ate, nota=nota))
+
+    if geo.edificacoes:
+        mais_perto = min(geo.edificacoes, key=lambda p: pol.distance(p["g"]))
+        nota = "O limite toca ou invade esta projeção." if pol.intersects(mais_perto["g"]) else ""
+        linha(f"projeção da edificação {mais_perto['nome']} (fachada aproximada)", mais_perto["g"],
+              mais_perto.get("metodos", {}).get("geometria", "source_attribute"),
+              (nota + " Projeção cadastral, não a fachada medida; marquises e varandas não incluídas.").strip())
+    if geo.meio_fio:
+        linha("meio-fio modelado (borda pista × calçada)", union(geo.meio_fio), "derived",
+              "Derivado do limite de quadra do cadastro; conferir em vistoria.")
+    eixos = [e["g"] for e in geo.eixos if not e["g"].is_empty]
+    if eixos:
+        linha("eixo de logradouro oficial", union(eixos), "source_attribute",
+              "Eixo não é borda de pista: não usar como distância até o meio-fio.")
+    return out
+
+
+def resumo_metodos(geo) -> dict:
+    """Área por método de obtenção e contagem de atributos de edificação por método."""
+    areas = collections.Counter()
+    for s in geo.superficies + geo.pinturas:
+        areas[s.get("metodo", "derived")] += s["g"].area
+    pred = collections.defaultdict(collections.Counter)
+    for p in geo.edificacoes:
+        for k, v in p.get("metodos", {}).items():
+            pred[k][v] += 1
+    inst = collections.Counter(i.get("metodo", "estimated") for i in geo.instancias)
+    return dict(superficies_m2={k: round(v, 1) for k, v in areas.items()},
+                edificacoes={k: dict(v) for k, v in pred.items()}, arvores_postes=dict(inst))
+
+
 def resumo_confianca(geo) -> dict:
     c = collections.Counter()
     for s in geo.superficies:
@@ -73,7 +120,7 @@ def resumo_confianca(geo) -> dict:
 
 
 def montar_relatorio(pedido, area, geo, malha_rel: dict, topologia: dict, formatos: dict,
-                     avisos: list[str], log_fontes: list[str]) -> dict:
+                     avisos: list[str], log_fontes: list[str], contrato: dict | None = None) -> dict:
     perfil = pedido.perfil
     ok_rodadas = len(pedido.lapidacoes) >= perfil["rodadas_lapidacao"]
     return dict(
@@ -82,7 +129,10 @@ def montar_relatorio(pedido, area, geo, malha_rel: dict, topologia: dict, format
                     rodadas_previstas=perfil["rodadas_lapidacao"], rodadas_recebidas=len(pedido.lapidacoes),
                     entrega_completa=ok_rodadas and not any("não gerado" in a for a in avisos)),
         area=area.resumo(),
+        contrato=contrato or {},
         geografia=geo.estatisticas,
+        metodos_de_obtencao=resumo_metodos(geo),
+        distancias_evento=distancias_evento(area, geo),
         confianca_por_categoria=resumo_confianca(geo),
         validacao_geometrica=dict(sobreposicoes_superficies_m2=sobreposicoes(geo),
                                   edificacoes=topologia),
@@ -103,6 +153,9 @@ def lista_pendencias_md(rel: dict) -> str:
               f"Rodadas de lapidação: {rel['pedido']['rodadas_recebidas']} de {rel['pedido']['rodadas_previstas']}",
               f"Entrega completa: {'sim' if rel['pedido']['entrega_completa'] else 'não'}", "", "## Pendências"]
     linhas += [f"- {p}" for p in rel["pendencias"]] or ["- Nenhuma"]
+    linhas += ["", "## Distâncias do limite do evento (extremos declarados)"]
+    for d in rel.get("distancias_evento", []):
+        linhas.append(f"- até {d['ate']}: {d['distancia_m']} m ({d['metodo_ate']}). {d['nota']}".rstrip())
     linhas += ["", "## Cobertura das ruas"]
     for nome, r in sorted(rel["cobertura_ruas"]["ruas"].items()):
         linhas.append(f"- {nome}: {r['dentro_da_pista_pct']}% de {r['comprimento_referencia_m']} m")
